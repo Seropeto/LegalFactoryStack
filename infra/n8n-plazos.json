@@ -1,0 +1,149 @@
+{
+  "name": "Legal Factory - Notificación de Plazos (V5 - Evolution API)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "interval": 24
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Check Plazos Diario",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://api-legal:8055/items/plazos?fields=*,expediente_id.cliente_id.telefono,expediente_id.cliente_id.nombre&filter[vencimiento][_lt]={{ $now.plus({days: 2}).toISO() }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "get-directus-data",
+      "name": "Obtener Plazos de Directus",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        300,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "data",
+        "options": {}
+      },
+      "id": "split-items",
+      "name": "Separar Registros",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.expediente_id?.cliente_id?.telefono }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "filter-valid-phone",
+      "name": "Tiene Teléfono?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://whatsapp-api:8080/message/sendText/toxiro_prime",
+        "sendHeaders": true,
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "apikey",
+              "value": "secret_api_key_legal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"number\": \"{{ $json.expediente_id.cliente_id.telefono.replace('+', '') }}\", \"text\": \"Hola {{ $json.expediente_id.cliente_id.nombre }}, recordatorio de Toxiro Abogados: El plazo '{{ $json.titulo }}' vence el {{ $json.vencimiento.split('T')[0] }}\" }",
+        "options": {}
+      },
+      "id": "evolution-api-node",
+      "name": "Evolution API - Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        950,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Check Plazos Diario": {
+      "main": [
+        [
+          {
+            "node": "Obtener Plazos de Directus",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Plazos de Directus": {
+      "main": [
+        [
+          {
+            "node": "Separar Registros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separar Registros": {
+      "main": [
+        [
+          {
+            "node": "Tiene Teléfono?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tiene Teléfono?": {
+      "main": [
+        [
+          {
+            "node": "Evolution API - Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -1,0 +1,114 @@
+services:
+  db-legal:
+    image: postgres:15-alpine
+    container_name: db-legal-factory
+    restart: always
+    volumes:
+      - v_db_legal:/var/lib/postgresql/data
+      - ./infra/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    environment:
+      POSTGRES_USER: toxiro_admin
+      POSTGRES_PASSWORD: toxiro_password_change_me
+      POSTGRES_DB: legal_db
+    networks:
+      - net-legal
+
+  db-whatsapp:
+    image: postgres:15-alpine
+    container_name: db-whatsapp-factory
+    restart: always
+    environment:
+      POSTGRES_USER: evolution_admin
+      POSTGRES_PASSWORD: evolution_password
+      POSTGRES_DB: evolution_db
+    volumes:
+      - v_db_whatsapp:/var/lib/postgresql/data
+    networks:
+      - net-legal
+
+  api-legal:
+    image: directus/directus:latest
+    container_name: api-legal-factory
+    restart: always
+    ports:
+      - "8055:8055"
+    environment:
+      KEY: "legal-factory-very-secret-key"
+      SECRET: "legal-factory-very-secret-secret"
+      DB_CLIENT: "pg"
+      DB_HOST: "db-legal"
+      DB_PORT: "5432"
+      DB_DATABASE: "legal_db"
+      DB_USER: "toxiro_admin"
+      DB_PASSWORD: "toxiro_password_change_me"
+      ADMIN_EMAIL: "admin@toxirodigital.cloud"
+      ADMIN_PASSWORD: "admin"
+      CORS_ENABLED: "true"
+      CORS_ORIGIN: "http://localhost:5173"
+      CORS_METHODS: "GET,POST,PATCH,DELETE,OPTIONS"
+      CORS_ALLOWED_HEADERS: "Content-Type,Authorization"
+      CORS_EXPOSE_HEADERS: "Content-Range"
+      CORS_CREDENTIALS: "true"
+    depends_on:
+      - db-legal
+    networks:
+      - net-legal
+
+  n8n-legal:
+    image: n8nio/n8n:latest
+    container_name: n8n-legal-factory
+    restart: always
+    ports:
+      - "5678:5678"
+    volumes:
+      - v_n8n_legal:/home/node/.n8n
+    environment:
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: "admin"
+      N8N_BASIC_AUTH_PASSWORD: "toxiro_password_change_me"
+    networks:
+      - net-legal
+
+  whatsapp-api:
+    image: atendai/evolution-api:v2.2.0
+    container_name: whatsapp-api-factory
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      AUTHENTICATION_API_KEY: "secret_api_key_legal"
+      AUTHENTICATION_TYPE: "apikey"
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "false" # Evitamos condiciones de carrera en WSL2
+      SERVER_TYPE_HTTP: "true"
+      LOG_COLOR: "true"
+      CORS_ENABLED: "true"
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: "postgresql"
+      DATABASE_CONNECTION_URI: "postgresql://evolution_admin:evolution_password@db-whatsapp:5432/evolution_db"
+      DATABASE_CONNECTION_CLIENT: "pg"
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      DATABASE_SAVE_DATA_INSTANCE: "false" # CRÍTICO: Las sesiones van a ARCHIVOS para estabilidad total en Windows
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      DATABASE_SAVE_DATA_LABELS: "true"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+      CONFIG_SESSION_BROWSER: "Toxiro-Chrome" # Forzamos un User-Agent limpio
+      LOG_LEVEL: "ERROR,WARN,DEBUG,INFO,LOG"
+    volumes:
+      - v_evolution_puro:/evolution/instances # Volumen interno puro de Docker
+    depends_on:
+      - db-whatsapp
+    networks:
+      - net-legal
+
+networks:
+  net-legal:
+    driver: bridge
+
+volumes:
+  v_db_legal:
+  v_n8n_legal:
+  v_db_whatsapp:
+  v_evolution_puro: # Nuevo volumen para evitar conflictos con el anterior

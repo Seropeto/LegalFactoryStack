@@ -1,0 +1,126 @@
+{
+    "name": "Legal Factory - Onboarding de Clientes (V2)",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "onboarding-cliente",
+                "options": {}
+            },
+            "id": "webhook-directus",
+            "name": "Directus Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                200,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "keepOnlySet": true,
+                "values": {
+                    "string": [
+                        {
+                            "name": "cliente_id",
+                            "value": "={{ $json.body.key }}"
+                        },
+                        {
+                            "name": "cliente_nombre",
+                            "value": "={{ $json.body.payload.nombre }}"
+                        },
+                        {
+                            "name": "cliente_email",
+                            "value": "={{ $json.body.payload.email }}"
+                        },
+                        {
+                            "name": "temp_password",
+                            "value": "={{ Math.random().toString(36).slice(-8) }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "set-credentials",
+            "name": "Generar Credenciales",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 1,
+            "position": [
+                400,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "PATCH",
+                "url": "=http://api-legal:8055/items/clientes/{{ $json.cliente_id }}",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={ \"clave\": \"{{ $json.temp_password }}\" }",
+                "options": {}
+            },
+            "id": "update-directus",
+            "name": "Guardar Clave en Directus",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                600,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "fromEmail": "contacto@toxirodigital.cloud",
+                "toEmail": "={{ $node[\"Generar Credenciales\"].json.cliente_email }}",
+                "subject": "Bienvenido a Toxiro Abogados - Tus Credenciales",
+                "html": "=<h1>Hola {{ $node[\"Generar Credenciales\"].json.cliente_nombre }}!</h1><p>Tu cuenta ha sido creada con éxito.</p><p>Puedes acceder a nuestro portal con tu RUT y la siguiente clave temporal:</p><div style=\"background:#f4f4f4; padding:20px; text-align:center; font-size:24px;\"><b>{{ $node[\"Generar Credenciales\"].json.temp_password }}</b></div><br><p>Saludos,<br>Equipo Toxiro Abogados</p>",
+                "options": {}
+            },
+            "id": "send-email",
+            "name": "Enviar Email Onboarding",
+            "type": "n8n-nodes-base.emailSend",
+            "typeVersion": 1,
+            "position": [
+                800,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "webhook-directus": {
+            "main": [
+                [
+                    {
+                        "node": "set-credentials",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "set-credentials": {
+            "main": [
+                [
+                    {
+                        "node": "update-directus",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "update-directus": {
+            "main": [
+                [
+                    {
+                        "node": "send-email",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

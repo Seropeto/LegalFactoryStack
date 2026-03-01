@@ -1,0 +1,90 @@
+{
+    "name": "Legal Factory - Cambio de Estado (Sentencia)",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "cambio-estado",
+                "options": {}
+            },
+            "id": "webhook-sentencia",
+            "name": "Directus State Change",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                200,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.body.payload.estado }}",
+                            "value2": "Sentencia"
+                        }
+                    ]
+                }
+            },
+            "id": "if-sentencia",
+            "name": "Es Sentencia?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                400,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "keepOnlySet": true,
+                "values": {
+                    "string": [
+                        {
+                            "name": "tarea_titulo",
+                            "value": "Revisión de cobro - Causa {{ $json.body.payload.n_causa }}"
+                        },
+                        {
+                            "name": "expediente_id",
+                            "value": "={{ $json.body.keys[0] }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "prep-tarea-cobro",
+            "name": "Prep Tarea Cobro",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 1,
+            "position": [
+                600,
+                200
+            ]
+        }
+    ],
+    "connections": {
+        "webhook-sentencia": {
+            "main": [
+                [
+                    {
+                        "node": "if-sentencia",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "if-sentencia": {
+            "main": [
+                [
+                    {
+                        "node": "prep-tarea-cobro",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}
