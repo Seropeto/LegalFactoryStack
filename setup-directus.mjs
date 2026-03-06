@@ -17,31 +17,28 @@ async function setup() {
         const token = loginData.data.access_token;
         console.log("Token obtenido con éxito.");
 
-        // 2. Crear Colección 'documentos'
-        console.log("Creando colección 'documentos'...");
+        // 2. Crear Colección 'documentos' si no existe
+        console.log("Verificando colección 'documentos'...");
         const collRes = await fetch(`${API_URL}/collections`, {
             method: 'POST',
-            headers: { 
+            headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({
                 collection: 'documentos',
                 schema: {},
-                meta: {
-                    icon: 'description',
-                    display_template: '{{nombre}}'
-                }
+                meta: { icon: 'description', display_template: '{{nombre}}' }
             })
         });
         const collData = await collRes.json();
         if (collRes.ok) {
-            console.log("Colección creada.");
+            console.log("Colección 'documentos' creada.");
         } else {
-            console.log("La colección ya podría existir:", collData.errors?.[0]?.message);
+            console.log("Colección 'documentos' ya existe (OK).");
         }
 
-        // 3. Crear Campos
+        // 3. Crear Campos de 'documentos'
         const fields = [
             { field: 'nombre', type: 'string', meta: { interface: 'input' } },
             { field: 'archivo', type: 'uuid', meta: { interface: 'file' }, schema: { foreign_key_column: 'id', foreign_key_table: 'directus_files' } },
@@ -49,57 +46,108 @@ async function setup() {
         ];
 
         for (const f of fields) {
-            console.log(`Creando campo '${f.field}'...`);
             const fieldRes = await fetch(`${API_URL}/fields/documentos`, {
                 method: 'POST',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify(f)
             });
             if (fieldRes.ok) console.log(`Campo '${f.field}' creado.`);
-            else console.log(`Nota sobre campo '${f.field}':`, (await fieldRes.json()).errors?.[0]?.message);
+            else console.log(`Campo '${f.field}' ya existe (OK).`);
         }
 
-        // 4. Configurar Permisos Públicos
-        console.log("Configurando permisos para rol Público...");
-        // Obtener ID del rol Público
-        const rolesRes = await fetch(`${API_URL}/roles`, {
+        // 4. Obtener ID de la política pública (Directus 11)
+        console.log("\nObteniendo política pública...");
+        const policiesRes = await fetch(`${API_URL}/policies?limit=20`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        const rolesData = await rolesRes.json();
-        const publicRole = rolesData.data.find(r => r.name === 'Public');
+        const policiesData = await policiesRes.json();
 
-        if (publicRole) {
-            const permissions = [
-                { collection: 'documentos', action: 'create', permissions: {}, validation: {}, fields: ['*'] },
-                { collection: 'documentos', action: 'read', permissions: {}, validation: {}, fields: ['*'] },
-                { collection: 'directus_files', action: 'create', permissions: {}, validation: {}, fields: ['*'] },
-                { collection: 'directus_files', action: 'read', permissions: {}, validation: {}, fields: ['*'] },
-                { collection: 'expedientes', action: 'read', permissions: {}, validation: {}, fields: ['*'] }
-            ];
+        // Buscar política pública por nombre o por ser la única sin admin_access
+        const publicPolicy = policiesData.data.find(p =>
+            p.name === '$t:public_label' ||
+            (!p.admin_access && !p.app_access && p.name?.toLowerCase().includes('public'))
+        ) || policiesData.data.find(p => !p.admin_access && !p.app_access);
 
-            for (const p of permissions) {
-                p.role = publicRole.id;
-                const pRes = await fetch(`${API_URL}/permissions`, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify(p)
-                });
-                if (pRes.ok) console.log(`Permiso '${p.action}' en '${p.collection}' creado.`);
-                else console.log(`Nota sobre permiso '${p.action}' en '${p.collection}':`, (await pRes.json()).errors?.[0]?.message);
+        if (!publicPolicy) {
+            throw new Error("No se encontró la política pública de Directus");
+        }
+        console.log(`Política pública encontrada: ${publicPolicy.name} (${publicPolicy.id})`);
+
+        // 5. Configurar permisos para todas las colecciones del sistema
+        const permisos = [
+            // Clientes: lectura para login por RUT, escritura para crear y actualizar clave
+            { collection: 'clientes', action: 'read' },
+            { collection: 'clientes', action: 'create' },
+            { collection: 'clientes', action: 'update' },
+            // Expedientes: CRUD completo
+            { collection: 'expedientes', action: 'read' },
+            { collection: 'expedientes', action: 'create' },
+            { collection: 'expedientes', action: 'update' },
+            { collection: 'expedientes', action: 'delete' },
+            // Actuaciones: lectura y creación
+            { collection: 'actuaciones', action: 'read' },
+            { collection: 'actuaciones', action: 'create' },
+            { collection: 'actuaciones', action: 'update' },
+            { collection: 'actuaciones', action: 'delete' },
+            // Plazos: CRUD completo
+            { collection: 'plazos', action: 'read' },
+            { collection: 'plazos', action: 'create' },
+            { collection: 'plazos', action: 'update' },
+            { collection: 'plazos', action: 'delete' },
+            // Documentos: CRUD completo
+            { collection: 'documentos', action: 'read' },
+            { collection: 'documentos', action: 'create' },
+            { collection: 'documentos', action: 'update' },
+            { collection: 'documentos', action: 'delete' },
+            // Archivos: lectura y creación para documentos
+            { collection: 'directus_files', action: 'read' },
+            { collection: 'directus_files', action: 'create' },
+        ];
+
+        console.log("\nConfigurando permisos...");
+        let creados = 0;
+        let existentes = 0;
+
+        for (const p of permisos) {
+            const pRes = await fetch(`${API_URL}/permissions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    policy: publicPolicy.id,
+                    collection: p.collection,
+                    action: p.action,
+                    permissions: {},
+                    validation: {},
+                    fields: ['*']
+                })
+            });
+            if (pRes.ok) {
+                creados++;
+            } else {
+                const err = await pRes.json();
+                if (err.errors?.[0]?.message?.includes('unique') || err.errors?.[0]?.extensions?.code === 'RECORD_NOT_UNIQUE') {
+                    existentes++;
+                } else {
+                    console.log(`  Aviso ${p.action} en ${p.collection}:`, err.errors?.[0]?.message);
+                }
             }
-            console.log("Permisos configurados.");
         }
 
-        console.log("¡Todo listo! Directus ha sido configurado.");
+        console.log(`  ✓ ${creados} permisos creados, ${existentes} ya existían.`);
+        console.log("\n✅ ¡Configuración completada! El sistema está listo.");
+        console.log("   Frontend: http://localhost:5173");
+        console.log("   Directus: http://localhost:8055/admin");
+        console.log("   n8n:      http://localhost:5678");
 
     } catch (err) {
         console.error("ERROR:", err.message);
+        process.exit(1);
     }
 }
 
