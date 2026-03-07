@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS expedientes (
     n_causa VARCHAR(100) NOT NULL, -- ROL o RIT
     tribunal VARCHAR(255),
     estado VARCHAR(50) DEFAULT 'Pendiente',
+    priority VARCHAR(20) DEFAULT 'Medium', -- High / Medium / Low
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

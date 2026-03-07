@@ -1,6 +1,7 @@
 import './style.css'
+import { appConfig } from './config';
 
-const API_URL = 'http://localhost:8055';
+const API_URL = appConfig.apiUrl;
 
 function formatBytes(bytes: number, decimals = 2) {
     if (bytes === 0) return '0 Bytes';
@@ -36,6 +37,7 @@ interface LegalDocument {
     case: string;
     size: string;
     updated: string;
+    archivoId: string;
 }
 
 interface Client {
@@ -70,16 +72,26 @@ type UserRole = 'ADMIN' | 'CLIENT' | 'NONE'
 let userRole: UserRole = 'NONE'
 let activeClientId: string | null = null
 let activeClientName: string | null = null
+let adminToken: string | null = null
+
+// Helper: cabeceras autenticadas para operaciones de admin
+function adminAuthHeaders(): Record<string, string> {
+    const h: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (adminToken) h['Authorization'] = `Bearer ${adminToken}`;
+    return h;
+}
 
 // Restore session
 const savedRole = localStorage.getItem('legalRole');
 const savedClientId = localStorage.getItem('legalClientId');
 const savedClientName = localStorage.getItem('legalClientName');
+const savedToken = sessionStorage.getItem('legalToken');
 
 if (savedRole) {
     userRole = savedRole as UserRole;
     activeClientId = savedClientId;
     activeClientName = savedClientName;
+    if (savedToken) adminToken = savedToken;
     currentView = 'dashboard';
 }
 
@@ -99,7 +111,7 @@ async function fetchData() {
             n_causa: c.n_causa,
             tribunal: c.tribunal,
             estado: c.estado,
-            priority: 'Medium',
+            priority: (c.priority as 'High' | 'Medium' | 'Low') || 'Medium',
             created_at: new Date(c.created_at).toLocaleDateString()
         }));
         stats.activeCases = cases.filter(c => c.estado !== 'Cerrado' && c.estado !== 'Sentencia').length;
@@ -154,7 +166,8 @@ async function fetchData() {
       type: d.nombre.toLowerCase().endsWith('.pdf') ? 'PDF' : 'IMG',
       case: d.expediente_id?.n_causa || 'Sin asignar',
       size: d.archivo?.filesize ? formatBytes(d.archivo.filesize) : 'Desconocido',
-      updated: new Date(d.date_created || Date.now()).toLocaleDateString()
+      updated: new Date(d.date_created || Date.now()).toLocaleDateString(),
+      archivoId: (typeof d.archivo === 'object' ? d.archivo?.id : d.archivo) || ''
     }));
 
   } catch (err) {
@@ -198,8 +211,8 @@ function renderPortalChoice() {
     <div class="login-screen">
       <div class="login-card">
         <div class="logo" style="margin-bottom: 2.5rem; justify-content: center;">
-          <span class="logo-icon">⚖️</span>
-          <div class="logo-text">Toxiro<span>Abogados</span></div>
+          <span class="logo-icon">${appConfig.firmIcon}</span>
+          <div class="logo-text">${appConfig.firmName.split(' ')[0]}<span>${appConfig.firmName.split(' ').slice(1).join(' ')}</span></div>
         </div>
         <h1 style="font-size: 1.5rem; margin-bottom: 0.5rem;">Bienvenido al Ecosistema Legal</h1>
         <p class="muted-text" style="margin-bottom: 2.5rem;">Seleccione su perfil de acceso para continuar.</p>
@@ -216,7 +229,7 @@ function renderPortalChoice() {
           </button>
         </div>
         
-        <p style="margin-top: 3rem; font-size: 0.75rem; opacity: 0.3;">Toxiro Digital v2.4 - Sistema de Gestión Judicial</p>
+        <p style="margin-top: 3rem; font-size: 0.75rem; opacity: 0.3;">${appConfig.firmName} ${appConfig.version} - Sistema de Gestión Judicial</p>
       </div>
     </div>
   `;
@@ -557,7 +570,8 @@ function attachModalEvents() {
             cliente_id: (document.querySelector('#client-select') as HTMLSelectElement).value,
             n_causa: (document.querySelector('#rit-input') as HTMLInputElement).value,
             tribunal: (document.querySelector('#tribunal-input') as HTMLInputElement).value,
-            estado: (document.querySelector('#estado-select') as HTMLSelectElement).value
+            estado: (document.querySelector('#estado-select') as HTMLSelectElement).value,
+            priority: (document.querySelector('#priority-select') as HTMLSelectElement)?.value || 'Medium'
         };
 
         try {
@@ -833,14 +847,31 @@ async function loginClient(rut: string, clave: string) {
 }
 
 async function loginAdmin(password: string) {
-    if (password === 'admin') {
+    isLoading = true;
+    render();
+    try {
+        const res = await fetch(`${API_URL}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: appConfig.adminEmail, password })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            alert('Credenciales incorrectas. Verifique su contraseña.');
+            return;
+        }
+        adminToken = data.data.access_token;
+        sessionStorage.setItem('legalToken', adminToken!);
         userRole = 'ADMIN';
         localStorage.setItem('legalRole', 'ADMIN');
         currentView = 'dashboard';
         await fetchData();
         toggleModal(false);
-    } else {
-        alert('Contraseña de administrador incorrecta.');
+    } catch (err) {
+        alert('Error de conexión con el servidor.');
+    } finally {
+        isLoading = false;
+        render();
     }
 }
 
@@ -900,7 +931,9 @@ function logout() {
     userRole = 'NONE';
     activeClientId = null;
     activeClientName = null;
+    adminToken = null;
     localStorage.clear();
+    sessionStorage.clear();
     currentView = 'login';
     render();
 }
@@ -990,14 +1023,24 @@ async function prepareNewCaseForm() {
           <label>Tribunal</label>
           <input type="text" id="tribunal-input" class="form-control" placeholder="Ej: 1er Juzgado de Letras" required />
         </div>
-        <div class="form-group">
-          <label>Estado Inicial</label>
-          <select id="estado-select" class="form-control" required>
-            <option value="Ingresada">Ingresada</option>
-            <option value="En Tramitación">En Tramitación</option>
-            <option value="Audiencia">Audiencia</option>
-            <option value="Sentencia">Sentencia</option>
-          </select>
+        <div style="display: flex; gap: 1rem;">
+          <div class="form-group" style="flex:2">
+            <label>Estado Inicial</label>
+            <select id="estado-select" class="form-control" required>
+              <option value="Ingresada">Ingresada</option>
+              <option value="En Tramitación">En Tramitación</option>
+              <option value="Audiencia">Audiencia</option>
+              <option value="Sentencia">Sentencia</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>Prioridad</label>
+            <select id="priority-select" class="form-control">
+              <option value="High">Alta</option>
+              <option value="Medium" selected>Media</option>
+              <option value="Low">Baja</option>
+            </select>
+          </div>
         </div>
         <div style="display: flex; gap: 1rem; margin-top: 2rem;">
           <button type="button" class="btn btn-outline" onclick="window.toggleModal(false)" style="flex:1">Cancelar</button>
@@ -1038,8 +1081,8 @@ function render() {
     <div class="app-container">
       <aside class="sidebar">
         <div class="logo">
-          <div class="logo-icon">⚖️</div>
-          Toxiro <span>Abogados</span>
+          <div class="logo-icon">${appConfig.firmIcon}</div>
+          ${appConfig.firmName.split(' ')[0]} <span>${appConfig.firmName.split(' ').slice(1).join(' ')}</span>
         </div>
         <ul class="nav-links">
           ${userRole === 'ADMIN' ? `
@@ -1125,39 +1168,43 @@ function renderTableBody(filteredCases: Case[]) {
 fetchData();
 render();
 
-function downloadDocument(id: string, name: string) {
-    alert(`Preparando descarga de "${name}" (ID: ${id})...\nLa integración con almacenamiento de Directus estará lista en la siguiente fase.`);
+function downloadDocument(id: string, _name: string) {
+    const doc = documents.find(d => d.id === id);
+    if (!doc?.archivoId) {
+        alert('Archivo no encontrado en el repositorio.');
+        return;
+    }
+    const url = `${API_URL}/assets/${doc.archivoId}?download`;
+    window.open(url, '_blank');
 }
 
 function previewDocument(id: string, name: string) {
+    const doc = documents.find(d => d.id === id);
+    const fileUrl = doc?.archivoId ? `${API_URL}/assets/${doc.archivoId}` : null;
     const isPDF = name.toLowerCase().endsWith('.pdf');
+
+    const mediaContent = fileUrl
+        ? (isPDF
+            ? `<iframe src="${fileUrl}" style="width:100%; height:520px; border:none; border-radius:4px;"></iframe>`
+            : `<img src="${fileUrl}" alt="${name}" style="max-width:100%; max-height:520px; object-fit:contain; border-radius:4px;" onerror="this.outerHTML='<p class=\\'muted-text\\' style=\\'padding:2rem\\'>No se pudo cargar la imagen.</p>'" />`)
+        : `<p class="muted-text" style="padding: 3rem; text-align:center;">Archivo no disponible.</p>`;
+
     const content = `
-        <div class="preview-container" style="background: #1a1a1a; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; border: 1px solid var(--border);">
-            ${isPDF ? `
-                <div style="padding: 2rem; text-align: center;">
-                    <span style="font-size: 4rem; display: block; margin-bottom: 1rem;">📄</span>
-                    <h3>Vista Previa: ${name}</h3>
-                    <p class="muted-text">En un entorno real, aquí se cargaría el visor de PDF de Directus.</p>
-                    <div style="margin-top: 2rem; width: 100%; height: 300px; background: rgba(255,255,255,0.05); border: 1px dashed rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center;">
-                        <span class="muted-text">Simulación de Iframe / PDF Viewer</span>
-                    </div>
-                </div>
-            ` : `
-                <div style="padding: 2rem; text-align: center;">
-                    <span style="font-size: 4rem; display: block; margin-bottom: 1rem;">🖼️</span>
-                    <h3>Vista Previa: ${name}</h3>
-                    <div style="margin-top: 2rem; width: 100%; min-height: 200px; background: #000; display: flex; align-items: center; justify-content: center;">
-                         <p class="muted-text">Imagen cargada desde repositorio corporativo</p>
-                    </div>
-                </div>
-            `}
-            <div style="padding: 1.5rem; border-top: 1px solid var(--border); width: 100%; background: var(--card-bg); display: flex; justify-content: space-between; align-items: center;">
-                <span class="muted-text">Documento ID: ${id}</span>
-                <button class="btn btn-glow" onclick="window.downloadDocument('${id}', '${name}')">Descargar Original</button>
+        <div style="background:#0d0d0d; border-radius:8px; overflow:hidden; border:1px solid var(--border);">
+            <div style="padding:1rem 1.5rem; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:0.8rem;">
+                <span style="font-size:1.2rem;">${isPDF ? '📄' : '🖼️'}</span>
+                <span style="font-size:0.9rem; color:var(--text-muted);">${name}</span>
+            </div>
+            <div style="background:#111; padding:0.5rem;">
+                ${mediaContent}
+            </div>
+            <div style="padding:1rem 1.5rem; display:flex; justify-content:flex-end; gap:0.8rem;">
+                <button class="btn btn-outline" onclick="window.toggleModal(false)">Cerrar</button>
+                <button class="btn btn-glow" onclick="window.downloadDocument('${id}', '${name}')">📥 Descargar</button>
             </div>
         </div>
     `;
-    showModal(`Previsualización: ${name}`, content);
+    showModal(`Previsualización`, content);
 }
 
 // @ts-ignore
