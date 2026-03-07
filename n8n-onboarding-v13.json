@@ -1,0 +1,113 @@
+[{
+  "id": "1",
+  "name": "Legal Factory - Onboarding de Clientes",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "onboarding-cliente",
+        "options": {}
+      },
+      "id": "webhook-node-1",
+      "name": "Directus Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [208, 304],
+      "webhookId": "onboarding-cliente-hook"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://api-legal:8055/items/clientes?filter%5Bclave%5D%5B_null%5D=true&sort=-created_at&limit=1",
+        "options": {}
+      },
+      "id": "fetch-node-1",
+      "name": "Obtener Cliente Nuevo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [428, 304]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst data = response.data;\nif (!data || data.length === 0) {\n  throw new Error('No hay clientes pendientes de onboarding');\n}\nconst cliente = data[0];\nconst password = Math.random().toString(36).slice(2,6).toUpperCase()\n  + Math.random().toString(36).slice(2,6)\n  + String(Math.floor(Math.random() * 90 + 10));\nreturn [{\n  json: {\n    cliente_id: cliente.id,\n    cliente_nombre: cliente.nombre,\n    cliente_email: cliente.email,\n    cliente_rut: cliente.rut,\n    temp_password: password\n  }\n}];"
+      },
+      "id": "code-node-2",
+      "name": "Generar Credenciales",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [648, 304]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'http://api-legal:8055/items/clientes/' + $json.cliente_id }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { clave: $json.temp_password } }}",
+        "options": {}
+      },
+      "id": "http-node-1",
+      "name": "Guardar Clave en Directus",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [868, 304]
+    },
+    {
+      "parameters": {
+        "jsCode": "const c = $node['Generar Credenciales'].json;\nconst html = '<div style=\"font-family:Georgia,serif;max-width:560px;margin:40px auto;color:#222;\">'\n  + '<p>Estimado/a ' + c.cliente_nombre + ',</p>'\n  + '<p>Le informamos que su cuenta en el portal de <strong>Toxiro Abogados</strong> ha sido habilitada.</p>'\n  + '<p>A continuacion sus credenciales de acceso:</p>'\n  + '<table style=\"border-collapse:collapse;margin:20px 0;width:100%;\">'\n  + '<tr><td style=\"padding:10px 16px;background:#f5f5f5;border:1px solid #ddd;font-weight:bold;width:140px;\">Usuario</td>'\n  + '<td style=\"padding:10px 16px;border:1px solid #ddd;font-family:monospace;\">' + c.cliente_rut + '</td></tr>'\n  + '<tr><td style=\"padding:10px 16px;background:#f5f5f5;border:1px solid #ddd;font-weight:bold;\">Contrasena</td>'\n  + '<td style=\"padding:10px 16px;border:1px solid #ddd;font-family:monospace;letter-spacing:2px;\">' + c.temp_password + '</td></tr>'\n  + '</table>'\n  + '<p>Por seguridad, le sugerimos cambiar su contrasena una vez que haya ingresado al sistema.</p>'\n  + '<p>Acceda al portal: <a href=\"http://localhost:5173\" style=\"color:#1e3ccb;\">Portal Toxiro Abogados</a></p>'\n  + '<br/><p>Atentamente,</p><p><strong>Toxiro Abogados</strong></p>'\n  + '<hr style=\"border:none;border-top:1px solid #ddd;margin:24px 0;\"/>'\n  + '<p style=\"font-size:0.8em;color:#999;\">Este es un mensaje automatico. Por favor no responda este correo.</p>'\n  + '</div>';\nreturn [{ json: { to: c.cliente_email, subject: 'Sus credenciales de acceso - Portal Toxiro Abogados', html: html } }];"
+      },
+      "id": "code-node-3",
+      "name": "Preparar Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1088, 304]
+    },
+    {
+      "parameters": {
+        "fromEmail": "toxirodigital@gmail.com",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "email-node-1",
+      "name": "Enviar Email Onboarding",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1308, 304],
+      "credentials": {
+        "smtp": {
+          "id": "1",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Directus Webhook": {
+      "main": [[{"node": "Obtener Cliente Nuevo", "type": "main", "index": 0}]]
+    },
+    "Obtener Cliente Nuevo": {
+      "main": [[{"node": "Generar Credenciales", "type": "main", "index": 0}]]
+    },
+    "Generar Credenciales": {
+      "main": [[{"node": "Guardar Clave en Directus", "type": "main", "index": 0}]]
+    },
+    "Guardar Clave en Directus": {
+      "main": [[{"node": "Preparar Email", "type": "main", "index": 0}]]
+    },
+    "Preparar Email": {
+      "main": [[{"node": "Enviar Email Onboarding", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-07T00:00:00.000Z",
+  "versionId": "v13"
+}]
