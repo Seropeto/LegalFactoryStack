@@ -1,90 +1,215 @@
 {
-    "name": "Legal Factory - Cambio de Estado (Sentencia)",
-    "nodes": [
-        {
-            "parameters": {
-                "httpMethod": "POST",
-                "path": "cambio-estado",
-                "options": {}
-            },
-            "id": "webhook-sentencia",
-            "name": "Directus State Change",
-            "type": "n8n-nodes-base.webhook",
-            "typeVersion": 1,
-            "position": [
-                200,
-                300
-            ]
+  "name": "Legal Factory - Notificación de Sentencia (Twilio WhatsApp)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sentencia-notificacion",
+        "options": {}
+      },
+      "id": "webhook-sentencia",
+      "name": "Directus State Change",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-estado-sentencia",
+              "leftValue": "={{ $json.body.payload.estado }}",
+              "rightValue": "Sentencia",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
         },
-        {
-            "parameters": {
-                "conditions": {
-                    "string": [
-                        {
-                            "value1": "={{ $json.body.payload.estado }}",
-                            "value2": "Sentencia"
-                        }
-                    ]
-                }
-            },
-            "id": "if-sentencia",
-            "name": "Es Sentencia?",
-            "type": "n8n-nodes-base.if",
-            "typeVersion": 1,
-            "position": [
-                400,
-                300
-            ]
+        "options": {}
+      },
+      "id": "if-sentencia",
+      "name": "Es Sentencia?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const expedienteId = $json.body.keys[0];\nreturn { expedienteId };"
+      },
+      "id": "extraer-id",
+      "name": "Extraer ID Expediente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://api-legal:8055/items/expedientes/{{ $json.expedienteId }}?fields=*,cliente_id.nombre,cliente_id.telefono",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer n8n_directus_static_token_legal"
+            }
+          ]
         },
-        {
-            "parameters": {
-                "keepOnlySet": true,
-                "values": {
-                    "string": [
-                        {
-                            "name": "tarea_titulo",
-                            "value": "Revisión de cobro - Causa {{ $json.body.payload.n_causa }}"
-                        },
-                        {
-                            "name": "expediente_id",
-                            "value": "={{ $json.body.keys[0] }}"
-                        }
-                    ]
-                },
-                "options": {}
-            },
-            "id": "prep-tarea-cobro",
-            "name": "Prep Tarea Cobro",
-            "type": "n8n-nodes-base.set",
-            "typeVersion": 1,
-            "position": [
-                600,
-                200
-            ]
+        "options": {}
+      },
+      "id": "get-client-data",
+      "name": "Obtener Datos Cliente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [860, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json.data;\n\n// Evitar doble notificación\nif (data.notificado_sentencia === true) {\n  return [];\n}\n\nconst nombre = data.cliente_id?.nombre || 'Cliente';\nconst telefono = data.cliente_id?.telefono || '';\nconst nCausa = data.n_causa || 'su causa';\nconst expedienteId = data.id;\n\nif (!telefono) {\n  return [];\n}\n\nconst telefonoLimpio = telefono.replace(/[^0-9]/g, '');\nconst telefonoTwilio = 'whatsapp:+' + telefonoLimpio;\n\nconst mensaje = `Estimado/a ${nombre},\\n\\n*Toxiro Abogados* le informa que se ha dictado sentencia en la causa *${nCausa}*.\\n\\nNuestro equipo se pondrá en contacto con usted a la brevedad para informarle sobre los siguientes pasos.\\n\\n_Toxiro Abogados - Equipo Legal_`;\n\nreturn { expedienteId, telefono: telefonoTwilio, mensaje, nombre, nCausa };"
+      },
+      "id": "preparar-mensaje",
+      "name": "Preparar Mensaje",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC2dd91dc7c1f67a1817bc7caab8823f4a/Messages.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "string",
+        "body": "={{ 'From=' + encodeURIComponent('whatsapp:+14155238886') + '&To=' + encodeURIComponent($json.telefono) + '&Body=' + encodeURIComponent($json.mensaje) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "twilio-send-whatsapp",
+      "name": "Twilio - WhatsApp Sentencia",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1300, 200],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "twilio-basic-auth",
+          "name": "Twilio Basic Auth"
         }
-    ],
-    "connections": {
-        "webhook-sentencia": {
-            "main": [
-                [
-                    {
-                        "node": "if-sentencia",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://api-legal:8055/items/expedientes/{{ $('Preparar Mensaje').item.json.expedienteId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer n8n_directus_static_token_legal"
+            }
+          ]
         },
-        "if-sentencia": {
-            "main": [
-                [
-                    {
-                        "node": "prep-tarea-cobro",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
-        }
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"notificado_sentencia\": true, \"fecha_notificacion_sentencia\": \"{{ $now.toISO() }}\" }",
+        "options": {}
+      },
+      "id": "marcar-notificado",
+      "name": "Marcar Sentencia Notificada",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1520, 200]
     }
+  ],
+  "connections": {
+    "Directus State Change": {
+      "main": [
+        [
+          {
+            "node": "Es Sentencia?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Es Sentencia?": {
+      "main": [
+        [
+          {
+            "node": "Extraer ID Expediente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Extraer ID Expediente": {
+      "main": [
+        [
+          {
+            "node": "Obtener Datos Cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Datos Cliente": {
+      "main": [
+        [
+          {
+            "node": "Preparar Mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Mensaje": {
+      "main": [
+        [
+          {
+            "node": "Twilio - WhatsApp Sentencia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio - WhatsApp Sentencia": {
+      "main": [
+        [
+          {
+            "node": "Marcar Sentencia Notificada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
 }

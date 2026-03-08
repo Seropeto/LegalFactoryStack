@@ -1,0 +1,122 @@
+{
+  "_comment": "Directus Flow: Notificacion WhatsApp al dictar Sentencia (via Twilio)",
+  "_architecture": "check_sentencia(condition) -> get_expediente(request) -> send_whatsapp(request) -> mark_not(item-update)",
+  "_note": "exec op NOT AVAILABLE in standard Directus Docker image (isolated-vm missing). Use request+item-update ops instead.",
+  "_bugs_fixed": [
+    "exec op: isolated-vm not installed in docker image -> use request+item-update instead",
+    "body templates: Directus wraps API response as {data:{data:{...}}} -> use .data.data. path",
+    "infinite loop: item-update with emitEvents:false prevents re-triggering the flow",
+    "condition filter: use {\"$trigger\":{\"payload\":{\"estado\":{\"_eq\":\"Sentencia\"}}}} syntax"
+  ],
+  "flow": {
+    "id": "cc93367d-6cc4-47c8-b094-88d6a52b063f",
+    "name": "Notificar Sentencia via n8n",
+    "status": "active",
+    "trigger": "event",
+    "options": {
+      "type": "action",
+      "scope": [
+        "items.update"
+      ],
+      "collections": [
+        "expedientes"
+      ]
+    },
+    "operation": "1a8024d1-2789-45df-a571-1532b8d3d460"
+  },
+  "operations": [
+    {
+      "id": "1a8024d1-2789-45df-a571-1532b8d3d460",
+      "key": "check_sentencia",
+      "name": null,
+      "type": "condition",
+      "flow": "cc93367d-6cc4-47c8-b094-88d6a52b063f",
+      "resolve": "e467f539-745d-4e8a-a3d3-9448ecbbedf5",
+      "reject": null,
+      "position_x": 200,
+      "position_y": 200,
+      "options": {
+        "filter": {
+          "$trigger": {
+            "payload": {
+              "estado": {
+                "_eq": "Sentencia"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "e467f539-745d-4e8a-a3d3-9448ecbbedf5",
+      "key": "get_expediente",
+      "name": null,
+      "type": "request",
+      "flow": "cc93367d-6cc4-47c8-b094-88d6a52b063f",
+      "resolve": "cc6aa551-369d-4f8c-a8d0-cd5d88fc899c",
+      "reject": null,
+      "position_x": 400,
+      "position_y": 200,
+      "options": {
+        "url": "http://api-legal:8055/items/expedientes/{{$trigger.keys[0]}}?fields=id,n_causa,estado,notificado_sentencia,cliente_id.nombre,cliente_id.telefono",
+        "method": "GET",
+        "headers": [
+          {
+            "header": "Authorization",
+            "value": "Bearer n8n_directus_static_token_legal"
+          }
+        ]
+      }
+    },
+    {
+      "id": "cc6aa551-369d-4f8c-a8d0-cd5d88fc899c",
+      "key": "send_whatsapp",
+      "name": null,
+      "type": "request",
+      "flow": "cc93367d-6cc4-47c8-b094-88d6a52b063f",
+      "resolve": "14cb7d3e-e759-4e07-ad35-5d72b0658fc7",
+      "reject": null,
+      "position_x": 600,
+      "position_y": 200,
+      "options": {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC2dd91dc7c1f67a1817bc7caab8823f4a/Messages.json",
+        "method": "POST",
+        "headers": [
+          {
+            "header": "Authorization",
+            "value": "Basic QUMyZGQ5MWRjN2MxZjY3YTE4MTdiYzdjYWFiODgyM2Y0YToxZDhlYzUzMThmMzQ0YzlhNGQ2OTQ4YjcwYzdiNmIyZg=="
+          },
+          {
+            "header": "Content-Type",
+            "value": "application/x-www-form-urlencoded"
+          }
+        ],
+        "body": {
+          "From": "whatsapp:+14155238886",
+          "To": "whatsapp:{{get_expediente.data.data.cliente_id.telefono}}",
+          "Body": "Estimado {{get_expediente.data.data.cliente_id.nombre}}, su expediente N {{get_expediente.data.data.n_causa}} ha recibido sentencia. Contacte a su abogado para mas detalles."
+        }
+      }
+    },
+    {
+      "id": "14cb7d3e-e759-4e07-ad35-5d72b0658fc7",
+      "key": "mark_not",
+      "name": null,
+      "type": "item-update",
+      "flow": "cc93367d-6cc4-47c8-b094-88d6a52b063f",
+      "resolve": null,
+      "reject": null,
+      "position_x": 800,
+      "position_y": 200,
+      "options": {
+        "collection": "expedientes",
+        "key": "{{get_expediente.data.data.id}}",
+        "payload": {
+          "notificado_sentencia": true
+        },
+        "emitEvents": false,
+        "permissions": "$full"
+      }
+    }
+  ]
+}

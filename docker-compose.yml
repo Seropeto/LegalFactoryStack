@@ -13,19 +13,6 @@ services:
     networks:
       - net-legal
 
-  db-whatsapp:
-    image: postgres:15-alpine
-    container_name: db-whatsapp-factory
-    restart: always
-    environment:
-      POSTGRES_USER: evolution_admin
-      POSTGRES_PASSWORD: evolution_password
-      POSTGRES_DB: evolution_db
-    volumes:
-      - v_db_whatsapp:/var/lib/postgresql/data
-    networks:
-      - net-legal
-
   api-legal:
     image: directus/directus:latest
     container_name: api-legal-factory
@@ -49,6 +36,7 @@ services:
       CORS_ALLOWED_HEADERS: "Content-Type,Authorization"
       CORS_EXPOSE_HEADERS: "Content-Range"
       CORS_CREDENTIALS: "true"
+      IMPORT_IP_DENY_LIST: ""
     depends_on:
       - db-legal
     networks:
@@ -69,40 +57,6 @@ services:
     networks:
       - net-legal
 
-  whatsapp-api:
-    image: atendai/evolution-api:v2.2.0
-    container_name: whatsapp-api-factory
-    restart: always
-    ports:
-      - "8080:8080"
-    environment:
-      AUTHENTICATION_API_KEY: "secret_api_key_legal"
-      AUTHENTICATION_TYPE: "apikey"
-      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "false" # Evitamos condiciones de carrera en WSL2
-      SERVER_TYPE_HTTP: "true"
-      LOG_COLOR: "true"
-      CORS_ENABLED: "true"
-      DATABASE_ENABLED: "true"
-      DATABASE_PROVIDER: "postgresql"
-      DATABASE_CONNECTION_URI: "postgresql://evolution_admin:evolution_password@db-whatsapp:5432/evolution_db"
-      DATABASE_CONNECTION_CLIENT: "pg"
-      CACHE_REDIS_ENABLED: "false"
-      CACHE_LOCAL_ENABLED: "true"
-      DATABASE_SAVE_DATA_INSTANCE: "false" # CRÍTICO: Las sesiones van a ARCHIVOS para estabilidad total en Windows
-      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
-      DATABASE_SAVE_DATA_CONTACTS: "true"
-      DATABASE_SAVE_DATA_CHATS: "true"
-      DATABASE_SAVE_DATA_LABELS: "true"
-      DATABASE_SAVE_DATA_HISTORIC: "false"
-      CONFIG_SESSION_BROWSER: "Toxiro-Chrome" # Forzamos un User-Agent limpio
-      LOG_LEVEL: "ERROR,WARN,DEBUG,INFO,LOG"
-    volumes:
-      - v_evolution_puro:/evolution/instances # Volumen interno puro de Docker
-    depends_on:
-      - db-whatsapp
-    networks:
-      - net-legal
-
 networks:
   net-legal:
     driver: bridge
@@ -110,5 +64,3 @@ networks:
 volumes:
   v_db_legal:
   v_n8n_legal:
-  v_db_whatsapp:
-  v_evolution_puro: # Nuevo volumen para evitar conflictos con el anterior

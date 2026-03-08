@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS expedientes (
     n_causa VARCHAR(100) NOT NULL, -- ROL o RIT
     tribunal VARCHAR(255),
     estado VARCHAR(50) DEFAULT 'Pendiente',
+    notificado_sentencia BOOLEAN DEFAULT FALSE,
+    fecha_notificacion_sentencia TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -42,6 +44,8 @@ CREATE TABLE IF NOT EXISTS plazos (
     vencimiento TIMESTAMP WITH TIME ZONE NOT NULL,
     alerta BOOLEAN DEFAULT FALSE,
     titulo VARCHAR(255),
+    notificado_whatsapp BOOLEAN DEFAULT FALSE,
+    fecha_notificacion TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

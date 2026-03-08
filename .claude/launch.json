@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "directus",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "-d", "db-legal", "api-legal"],
+      "port": 8055
+    },
+    {
+      "name": "n8n",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "-d", "n8n-legal"],
+      "port": 5678
+    },
+    {
+      "name": "stack",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "-d"],
+      "port": 8055
+    }
+  ]
+}

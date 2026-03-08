@@ -1,6 +1,6 @@
 
-const API_URL = 'http://localhost:8055';
-const ADMIN_EMAIL = 'admin@toxirodigital.cloud';
+const API_URL = 'https://api.toxirodigital.cloud';
+const ADMIN_EMAIL = 'toxirodigital@gmail.com';
 const ADMIN_PASSWORD = 'admin';
 
 async function setup() {
@@ -21,7 +21,7 @@ async function setup() {
         console.log("Creando colección 'documentos'...");
         const collRes = await fetch(`${API_URL}/collections`, {
             method: 'POST',
-            headers: { 
+            headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
@@ -52,7 +52,7 @@ async function setup() {
             console.log(`Creando campo '${f.field}'...`);
             const fieldRes = await fetch(`${API_URL}/fields/documentos`, {
                 method: 'POST',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
@@ -84,7 +84,7 @@ async function setup() {
                 p.role = publicRole.id;
                 const pRes = await fetch(`${API_URL}/permissions`, {
                     method: 'POST',
-                    headers: { 
+                    headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
