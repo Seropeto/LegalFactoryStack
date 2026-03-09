@@ -8,7 +8,6 @@
 services:
   db-legal:
     image: postgres:15-alpine
-    container_name: toxiro-db
     restart: always
     volumes:
       - toxiro_db_data:/var/lib/postgresql/data
@@ -22,7 +21,6 @@ services:
 
   api-legal:
     image: directus/directus:latest
-    container_name: toxiro-api
     restart: always
     volumes:
       - toxiro_uploads:/directus/uploads
@@ -63,7 +61,6 @@ services:
       dockerfile: Dockerfile.frontend
       args:
         VITE_API_URL: "https://api.toxirodigital.cloud"
-    container_name: toxiro-web
     restart: always
     networks:
       - toxiro-net
