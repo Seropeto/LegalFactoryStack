@@ -4,8 +4,8 @@ import urllib.request, json, base64, time
 
 BASE = "http://localhost:8055"
 FLOW_ID = "cc93367d-6cc4-47c8-b094-88d6a52b063f"
-TWILIO_SID = "AC2dd91dc7c1f67a1817bc7caab8823f4a"
-TWILIO_TOKEN = "1d8ec5318f344c9a4d6948b70c7b6b2f"
+TWILIO_SID = "YOUR_TWILIO_SID"
+TWILIO_TOKEN = "YOUR_TWILIO_AUTH_TOKEN"
 TWILIO_FROM = "whatsapp:+14155238886"
 DIRECTUS_TOKEN = "n8n_directus_static_token_legal"
 twilio_auth = base64.b64encode((TWILIO_SID + ":" + TWILIO_TOKEN).encode()).decode()

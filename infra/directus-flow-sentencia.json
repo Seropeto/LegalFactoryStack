@@ -79,12 +79,12 @@
       "position_x": 600,
       "position_y": 200,
       "options": {
-        "url": "https://api.twilio.com/2010-04-01/Accounts/AC2dd91dc7c1f67a1817bc7caab8823f4a/Messages.json",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/YOUR_TWILIO_SID/Messages.json",
         "method": "POST",
         "headers": [
           {
             "header": "Authorization",
-            "value": "Basic QUMyZGQ5MWRjN2MxZjY3YTE4MTdiYzdjYWFiODgyM2Y0YToxZDhlYzUzMThmMzQ0YzlhNGQ2OTQ4YjcwYzdiNmIyZg=="
+            "value": "Basic YOUR_BASE64_TWILIO_CREDENTIALS"
           },
           {
             "header": "Content-Type",

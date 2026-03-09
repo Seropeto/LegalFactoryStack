@@ -86,7 +86,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.twilio.com/2010-04-01/Accounts/AC2dd91dc7c1f67a1817bc7caab8823f4a/Messages.json",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/YOUR_TWILIO_SID/Messages.json",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpBasicAuth",
         "sendBody": true,

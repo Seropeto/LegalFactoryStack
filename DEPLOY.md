@@ -133,7 +133,7 @@ Importar estos archivos JSON desde el menu de n8n:
    - Value: `Bearer n8n_directus_static_token_legal`
 
 2. **Twilio Basic Auth** (tipo: HTTP Basic Auth)
-   - Username: `AC2dd91dc7c1f67a1817bc7caab8823f4a` (Account SID)
+   - Username: `<Tu Twilio Account SID>` (empieza con AC...)
    - Password: `<Twilio Auth Token>`
 
 3. **SMTP Email** (tipo: SMTP)
