@@ -1,126 +1,99 @@
 {
-    "name": "Legal Factory - Onboarding de Clientes (V2)",
-    "nodes": [
-        {
-            "parameters": {
-                "httpMethod": "POST",
-                "path": "onboarding-cliente",
-                "options": {}
-            },
-            "id": "webhook-directus",
-            "name": "Directus Webhook",
-            "type": "n8n-nodes-base.webhook",
-            "typeVersion": 1,
-            "position": [
-                200,
-                300
-            ]
+  "id": "onboarding-cliente-wf",
+  "name": "Legal Factory - Onboarding de Clientes",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "onboarding-cliente",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-directus",
+      "name": "Directus Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "onboarding-cliente"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst nombre = body.payload?.nombre || body.nombre || 'Cliente';\nconst email = body.payload?.email || body.email || '';\nconst telefono = body.payload?.telefono || body.telefono || '';\nconst rut = body.payload?.rut || body.rut || '';\nconst clienteId = body.key || body.cliente_id || '';\nconst tempPassword = Math.random().toString(36).slice(-8);\n\nreturn [{ json: { cliente_id: clienteId, nombre, email, telefono, rut, temp_password: tempPassword } }];"
+      },
+      "id": "set-credentials",
+      "name": "Generar Credenciales",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://api-legal:8055/items/clientes/{{ $json.cliente_id }}",
+        "sendHeaders": true,
+        "headerParametersUi": {
+          "parameter": [
+            { "name": "Authorization", "value": "Bearer n8n_directus_static_token_legal" }
+          ]
         },
-        {
-            "parameters": {
-                "keepOnlySet": true,
-                "values": {
-                    "string": [
-                        {
-                            "name": "cliente_id",
-                            "value": "={{ $json.body.key }}"
-                        },
-                        {
-                            "name": "cliente_nombre",
-                            "value": "={{ $json.body.payload.nombre }}"
-                        },
-                        {
-                            "name": "cliente_email",
-                            "value": "={{ $json.body.payload.email }}"
-                        },
-                        {
-                            "name": "temp_password",
-                            "value": "={{ Math.random().toString(36).slice(-8) }}"
-                        }
-                    ]
-                },
-                "options": {}
-            },
-            "id": "set-credentials",
-            "name": "Generar Credenciales",
-            "type": "n8n-nodes-base.set",
-            "typeVersion": 1,
-            "position": [
-                400,
-                300
-            ]
-        },
-        {
-            "parameters": {
-                "method": "PATCH",
-                "url": "=http://api-legal:8055/items/clientes/{{ $json.cliente_id }}",
-                "authentication": "genericCredentialType",
-                "genericAuthType": "httpHeaderAuth",
-                "sendBody": true,
-                "specifyBody": "json",
-                "jsonBody": "={ \"clave\": \"{{ $json.temp_password }}\" }",
-                "options": {}
-            },
-            "id": "update-directus",
-            "name": "Guardar Clave en Directus",
-            "type": "n8n-nodes-base.httpRequest",
-            "typeVersion": 3,
-            "position": [
-                600,
-                300
-            ]
-        },
-        {
-            "parameters": {
-                "fromEmail": "contacto@toxirodigital.cloud",
-                "toEmail": "={{ $node[\"Generar Credenciales\"].json.cliente_email }}",
-                "subject": "Bienvenido a Toxiro Abogados - Tus Credenciales",
-                "html": "=<h1>Hola {{ $node[\"Generar Credenciales\"].json.cliente_nombre }}!</h1><p>Tu cuenta ha sido creada con éxito.</p><p>Puedes acceder a nuestro portal con tu RUT y la siguiente clave temporal:</p><div style=\"background:#f4f4f4; padding:20px; text-align:center; font-size:24px;\"><b>{{ $node[\"Generar Credenciales\"].json.temp_password }}</b></div><br><p>Saludos,<br>Equipo Toxiro Abogados</p>",
-                "options": {}
-            },
-            "id": "send-email",
-            "name": "Enviar Email Onboarding",
-            "type": "n8n-nodes-base.emailSend",
-            "typeVersion": 1,
-            "position": [
-                800,
-                300
-            ]
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"clave\": \"{{ $json.temp_password }}\" }",
+        "options": {}
+      },
+      "id": "update-directus",
+      "name": "Guardar Clave en Directus",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const prev = $('Generar Credenciales').first().json;\nconst nombre = prev.nombre || 'Estimado/a cliente';\nconst rut = prev.rut || '';\nconst clave = prev.temp_password || '';\n\nconst html = `<!DOCTYPE html><html lang=\"es\"><head><meta charset=\"UTF-8\"><title>Bienvenido a Toxiro Abogados</title></head><body style=\"margin:0;padding:0;background-color:#0f1117;font-family:'Segoe UI',Arial,sans-serif\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background-color:#0f1117;padding:40px 0\"><tr><td align=\"center\"><table width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;width:100%\"><tr><td style=\"background:linear-gradient(135deg,#1a1f2e 0%,#252d3d 100%);border-radius:12px 12px 0 0;padding:32px 40px;text-align:center;border-bottom:2px solid #00d2ff\"><div style=\"font-size:40px;margin-bottom:10px\">⚖️</div><div style=\"color:#ffffff;font-size:24px;font-weight:700;letter-spacing:1px\">Toxiro Abogados</div><div style=\"color:#00d2ff;font-size:12px;letter-spacing:3px;margin-top:4px\">GESTIÓN LEGAL DIGITAL</div></td></tr><tr><td style=\"background-color:#161b27;padding:40px\"><p style=\"color:#a0aec0;font-size:15px;margin:0 0 24px 0\">Estimado/a <strong style=\"color:#ffffff\">${nombre}</strong>,</p><p style=\"color:#e2e8f0;font-size:15px;line-height:1.7;margin:0 0 20px 0\">Le damos la <strong style=\"color:#00d2ff\">bienvenida al portal de clientes</strong> de Toxiro Abogados. A continuación encontrará sus credenciales de acceso.</p><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:28px 0\"><tr><td style=\"background:linear-gradient(135deg,rgba(0,210,255,0.08),rgba(0,210,255,0.04));border:1px solid rgba(0,210,255,0.2);border-radius:8px;padding:24px\"><div style=\"margin-bottom:16px\"><div style=\"color:#a0aec0;font-size:11px;letter-spacing:2px;margin-bottom:6px\">RUT / USUARIO</div><div style=\"color:#ffffff;font-size:18px;font-weight:700;letter-spacing:1px\">${rut}</div></div><div style=\"border-top:1px solid rgba(0,210,255,0.15);padding-top:16px\"><div style=\"color:#a0aec0;font-size:11px;letter-spacing:2px;margin-bottom:6px\">CLAVE TEMPORAL</div><div style=\"color:#00d2ff;font-size:28px;font-weight:700;letter-spacing:4px;font-family:monospace\">${clave}</div></div></td></tr></table><p style=\"color:#e2e8f0;font-size:14px;line-height:1.7;margin:0 0 12px 0\">Por seguridad, le recomendamos cambiar su clave en el primer acceso.</p><p style=\"color:#718096;font-size:13px;margin:0 0 32px 0\">Si tiene alguna consulta sobre el acceso al portal, no dude en contactarnos.</p><table cellpadding=\"0\" cellspacing=\"0\" style=\"margin:0 auto\"><tr><td style=\"background:linear-gradient(135deg,#00d2ff,#0099cc);border-radius:8px;padding:14px 32px;text-align:center\"><a href=\"mailto:contacto@toxirodigital.cloud\" style=\"color:#ffffff;font-size:14px;font-weight:600;text-decoration:none\">Contactar al Estudio</a></td></tr></table></td></tr><tr><td style=\"background-color:#0f1117;border-radius:0 0 12px 12px;padding:24px 40px;text-align:center;border-top:1px solid #1a1f2e\"><p style=\"color:#4a5568;font-size:12px;margin:0 0 4px 0\">© 2026 Toxiro Abogados · contacto@toxirodigital.cloud</p><p style=\"color:#2d3748;font-size:11px;margin:0\">Este correo contiene información confidencial destinada exclusivamente al destinatario.</p></td></tr></table></td></tr></table></body></html>`;\n\nreturn [{ json: { html, to: prev.email, nombre, rut, clave } }];"
+      },
+      "id": "preparar-email",
+      "name": "Preparar Email Bienvenida",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "contacto@toxirodigital.cloud",
+        "toEmail": "={{ $json.to }}",
+        "subject": "Bienvenido a Toxiro Abogados - Sus Credenciales de Acceso",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Enviar Email Onboarding",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1080, 300],
+      "credentials": {
+        "smtp": {
+          "id": "flFKeqvNhUCmB3qq",
+          "name": "SMTP account"
         }
-    ],
-    "connections": {
-        "webhook-directus": {
-            "main": [
-                [
-                    {
-                        "node": "set-credentials",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
-        },
-        "set-credentials": {
-            "main": [
-                [
-                    {
-                        "node": "update-directus",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
-        },
-        "update-directus": {
-            "main": [
-                [
-                    {
-                        "node": "send-email",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
-        }
+      }
     }
+  ],
+  "connections": {
+    "Directus Webhook": {
+      "main": [[{ "node": "Generar Credenciales", "type": "main", "index": 0 }]]
+    },
+    "Generar Credenciales": {
+      "main": [[{ "node": "Guardar Clave en Directus", "type": "main", "index": 0 }]]
+    },
+    "Guardar Clave en Directus": {
+      "main": [[{ "node": "Preparar Email Bienvenida", "type": "main", "index": 0 }]]
+    },
+    "Preparar Email Bienvenida": {
+      "main": [[{ "node": "Enviar Email Onboarding", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": []
 }

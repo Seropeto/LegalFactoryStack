@@ -1,0 +1,62 @@
+{
+  "id": "cierre-expediente-wf",
+  "name": "Notificacion Cierre Expediente",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cierre-expediente",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-cierre",
+      "name": "Webhook Cierre",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "cierre-expediente"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst nombre = body.cliente_nombre || 'Estimado/a cliente';\nconst causa = body.n_causa || '';\nconst tribunal = body.tribunal || '';\n\nconst html = `\n<!DOCTYPE html>\n<html lang=\"es\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>Cierre de Expediente</title>\n</head>\n<body style=\"margin:0;padding:0;background-color:#0f1117;font-family:'Segoe UI',Arial,sans-serif\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background-color:#0f1117;padding:40px 0\">\n    <tr>\n      <td align=\"center\">\n        <table width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;width:100%\">\n          <!-- Header con logo -->\n          <tr>\n            <td style=\"background:linear-gradient(135deg,#1a1f2e 0%,#252d3d 100%);border-radius:12px 12px 0 0;padding:32px 40px;text-align:center;border-bottom:2px solid #00d2ff\">\n              <div style=\"font-size:36px;margin-bottom:8px\">⚖️</div>\n              <div style=\"color:#ffffff;font-size:24px;font-weight:700;letter-spacing:1px\">Toxiro Abogados</div>\n              <div style=\"color:#00d2ff;font-size:12px;letter-spacing:3px;margin-top:4px\">GESTIÓN LEGAL DIGITAL</div>\n            </td>\n          </tr>\n          <!-- Cuerpo -->\n          <tr>\n            <td style=\"background-color:#161b27;padding:40px\">\n              <p style=\"color:#a0aec0;font-size:15px;margin:0 0 24px 0\">Estimado/a <strong style=\"color:#ffffff\">${nombre}</strong>,</p>\n              <p style=\"color:#e2e8f0;font-size:15px;line-height:1.7;margin:0 0 20px 0\">\n                Es un placer comunicarle que su expediente ha sido <strong style=\"color:#00d2ff\">cerrado exitosamente</strong>.\n              </p>\n              <!-- Caja expediente -->\n              <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:24px 0\">\n                <tr>\n                  <td style=\"background:linear-gradient(135deg,rgba(0,210,255,0.08),rgba(0,210,255,0.04));border:1px solid rgba(0,210,255,0.2);border-radius:8px;padding:20px 24px\">\n                    <div style=\"color:#a0aec0;font-size:11px;letter-spacing:2px;margin-bottom:8px\">EXPEDIENTE</div>\n                    <div style=\"color:#ffffff;font-size:18px;font-weight:700;margin-bottom:4px\">${causa}</div>\n                    <div style=\"color:#718096;font-size:13px\">${tribunal}</div>\n                  </td>\n                </tr>\n              </table>\n              <p style=\"color:#e2e8f0;font-size:15px;line-height:1.7;margin:0 0 20px 0\">\n                Queremos agradecerle sinceramente por haber depositado su confianza en nuestro equipo. Fue un honor acompañarle en este proceso legal y esperamos haber cumplido con sus expectativas.\n              </p>\n              <p style=\"color:#e2e8f0;font-size:15px;line-height:1.7;margin:0 0 32px 0\">\n                Si en el futuro requiere asesoría legal o tiene alguna consulta, no dude en contactarnos. Estaremos encantados de atenderle.\n              </p>\n              <table cellpadding=\"0\" cellspacing=\"0\" style=\"margin:0 auto\">\n                <tr>\n                  <td style=\"background:linear-gradient(135deg,#00d2ff,#0099cc);border-radius:8px;padding:14px 32px;text-align:center\">\n                    <a href=\"mailto:contacto@toxirodigital.cloud\" style=\"color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;letter-spacing:0.5px\">Contáctenos</a>\n                  </td>\n                </tr>\n              </table>\n            </td>\n          </tr>\n          <!-- Footer -->\n          <tr>\n            <td style=\"background-color:#0f1117;border-radius:0 0 12px 12px;padding:24px 40px;text-align:center;border-top:1px solid #1a1f2e\">\n              <p style=\"color:#4a5568;font-size:12px;margin:0 0 4px 0\">© 2026 Toxiro Abogados · contacto@toxirodigital.cloud</p>\n              <p style=\"color:#2d3748;font-size:11px;margin:0\">Este correo es informativo. Por favor no responda directamente a este mensaje.</p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>\n`;\n\nreturn [{ json: { html, to: body.cliente_email, nombre, causa } }];"
+      },
+      "id": "preparar-email",
+      "name": "Preparar Email HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "contacto@toxirodigital.cloud",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ 'Su expediente ' + $json.causa + ' ha sido cerrado - Toxiro Abogados' }}",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "enviar-email",
+      "name": "Enviar Email Cierre",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [680, 300],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-hostinger-toxiro",
+          "name": "Hostinger SMTP - Toxiro"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Cierre": {
+      "main": [[{ "node": "Preparar Email HTML", "type": "main", "index": 0 }]]
+    },
+    "Preparar Email HTML": {
+      "main": [[{ "node": "Enviar Email Cierre", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}

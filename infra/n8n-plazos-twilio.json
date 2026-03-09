@@ -1,0 +1,241 @@
+{
+  "name": "Legal Factory - Notificación de Plazos (Twilio WhatsApp)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "interval": 24
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Check Plazos Diario",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://api-legal:8055/items/plazos?fields=*,expediente_id.cliente_id.telefono,expediente_id.cliente_id.nombre&filter[vencimiento][_lt]={{ $now.plus({days: 2}).toISO() }}&filter[notificado_whatsapp][_neq]=true",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer n8n_directus_static_token_legal"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-directus-data",
+      "name": "Obtener Plazos Pendientes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        300,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "data",
+        "options": {}
+      },
+      "id": "split-items",
+      "name": "Separar Registros",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-phone",
+              "leftValue": "={{ $json.expediente_id?.cliente_id?.telefono }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-valid-phone",
+      "name": "Tiene Teléfono?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst nombre = item.expediente_id?.cliente_id?.nombre || 'Cliente';\nconst telefono = item.expediente_id?.cliente_id?.telefono || '';\nconst titulo = item.titulo || 'Plazo';\nconst vencimiento = (item.vencimiento || '').split('T')[0];\n\n// Limpiar teléfono: quitar +, espacios, guiones y agregar prefijo Twilio\nconst telefonoLimpio = telefono.replace(/[^0-9]/g, '');\nconst telefonoTwilio = 'whatsapp:+' + telefonoLimpio;\n\n// Formatear fecha legible\nconst [year, month, day] = vencimiento.split('-');\nconst fechaLegible = `${day}/${month}/${year}`;\n\nconst mensaje = `Estimado/a ${nombre},\\n\\nLe recordamos de parte de *Toxiro Abogados* que el plazo *${titulo}* vence el *${fechaLegible}*.\\n\\nPor favor, contáctenos si tiene consultas.\\n\\n_Toxiro Abogados - Equipo Legal_`;\n\nreturn {\n  plazoId: item.id,\n  telefono: telefonoTwilio,\n  mensaje,\n  nombre,\n  titulo,\n  vencimiento: fechaLegible\n};"
+      },
+      "id": "preparar-mensaje",
+      "name": "Preparar Mensaje",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC2dd91dc7c1f67a1817bc7caab8823f4a/Messages.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "string",
+        "body": "={{ 'From=' + encodeURIComponent('whatsapp:+14155238886') + '&To=' + encodeURIComponent($json.telefono) + '&Body=' + encodeURIComponent($json.mensaje) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "twilio-send-whatsapp",
+      "name": "Twilio - Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1100,
+        300
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "twilio-basic-auth",
+          "name": "Twilio Basic Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://api-legal:8055/items/plazos/{{ $('Preparar Mensaje').item.json.plazoId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer n8n_directus_static_token_legal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"notificado_whatsapp\": true, \"fecha_notificacion\": \"{{ $now.toISO() }}\" }",
+        "options": {}
+      },
+      "id": "marcar-notificado",
+      "name": "Marcar Notificado en Directus",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1300,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Check Plazos Diario": {
+      "main": [
+        [
+          {
+            "node": "Obtener Plazos Pendientes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Plazos Pendientes": {
+      "main": [
+        [
+          {
+            "node": "Separar Registros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separar Registros": {
+      "main": [
+        [
+          {
+            "node": "Tiene Teléfono?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tiene Teléfono?": {
+      "main": [
+        [
+          {
+            "node": "Preparar Mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Mensaje": {
+      "main": [
+        [
+          {
+            "node": "Twilio - Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio - Enviar WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Marcar Notificado en Directus",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

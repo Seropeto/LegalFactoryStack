@@ -1,8 +1,6 @@
 -- Legal Factory Beta - PostgreSQL Schema Initialization
 -- Generated for: Toxiro Digital
 
-CREATE SCHEMA IF NOT EXISTS evolution;
-
 -- 1. Clientes Table
 CREATE TABLE IF NOT EXISTS clientes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -24,6 +22,8 @@ CREATE TABLE IF NOT EXISTS expedientes (
     estado VARCHAR(50) DEFAULT 'Pendiente',
     notificado_sentencia BOOLEAN DEFAULT FALSE,
     fecha_notificacion_sentencia TIMESTAMP WITH TIME ZONE,
+    notificado_cierre BOOLEAN DEFAULT FALSE,
+    fecha_notificacion_cierre TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

@@ -290,7 +290,8 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  overflow: auto;
+  max-height: calc(100vh - 200px);
 }
 
 .cal-header {
@@ -617,4 +618,156 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   font-size: 0.75rem;
   color: var(--accent);
   opacity: 0.8;
+}
+
+/* ═══════ Monthly Calendar (.mcal-*) ═══════ */
+.mcal-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.mcal-month-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: capitalize;
+}
+
+.mcal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.mcal-header {
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.65rem 0.5rem;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.mcal-cell {
+  background: var(--card-bg-solid);
+  min-height: 100px;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: background 0.15s;
+}
+
+.mcal-cell.mcal-empty {
+  background: rgba(15, 15, 20, 0.5);
+}
+
+.mcal-cell.mcal-today {
+  background: rgba(0, 210, 255, 0.07);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.mcal-cell.mcal-has-events {
+  cursor: pointer;
+}
+
+.mcal-cell.mcal-has-events:hover {
+  background: var(--surface-hover);
+}
+
+.mcal-day-number {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.mcal-today .mcal-day-number {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.mcal-event-dot {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: rgba(30, 60, 203, 0.15);
+  overflow: hidden;
+}
+
+.mcal-dot {
+  width: 6px;
+  height: 6px;
+  min-width: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.mcal-event-text {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mcal-more {
+  font-size: 0.65rem;
+  color: var(--accent);
+  font-weight: 700;
+  padding: 1px 4px;
+  text-align: center;
+}
+
+/* ═══════ Day Events Modal ═══════ */
+.day-events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.day-event-card {
+  background: var(--card-bg-solid);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 1rem 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.day-event-card:hover {
+  background: var(--surface-hover);
+  border-left-color: var(--primary-light);
+  transform: translateX(4px);
+}
+
+.day-event-time {
+  font-size: 0.78rem;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+
+.day-event-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.25rem;
+}
+
+.day-event-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
 }

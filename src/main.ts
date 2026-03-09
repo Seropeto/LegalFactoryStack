@@ -1,6 +1,6 @@
 import './style.css'
 
-const API_URL = 'http://localhost:8055';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8055';
 
 function formatBytes(bytes: number, decimals = 2) {
     if (bytes === 0) return '0 Bytes';
@@ -19,6 +19,8 @@ interface Case {
     estado: string;
     priority: 'High' | 'Medium' | 'Low';
     created_at: string;
+    cliente_nombre: string;
+    cliente_telefono: string;
 }
 
 interface Appointment {
@@ -27,6 +29,9 @@ interface Appointment {
     time: string;
     day: number;
     duration: number;
+    rawDate: Date;
+    causa?: string;
+    cliente?: string;
 }
 
 interface LegalDocument {
@@ -49,6 +54,7 @@ interface Client {
 let cases: Case[] = [];
 let appointments: Appointment[] = [];
 let clients: Client[] = [];
+let calendarMonth = new Date();
 let stats = {
     activeCases: 0,
     weekAudiences: 0,
@@ -88,9 +94,9 @@ async function fetchData() {
     render();
     try {
         // 1. Fetch Expedientes
-        let casesUrl = `${API_URL}/items/expedientes`;
+        let casesUrl = `${API_URL}/items/expedientes?fields=*,cliente_id.*`;
         if (userRole === 'CLIENT') {
-            casesUrl += `?filter[cliente_id][_eq]=${activeClientId}`;
+            casesUrl += `&filter[cliente_id][_eq]=${activeClientId}`;
         }
         const casesRes = await fetch(casesUrl);
         const casesData = await casesRes.json();
@@ -100,14 +106,16 @@ async function fetchData() {
             tribunal: c.tribunal,
             estado: c.estado,
             priority: 'Medium',
-            created_at: new Date(c.created_at).toLocaleDateString()
+            created_at: new Date(c.created_at).toLocaleDateString(),
+            cliente_nombre: c.cliente_id?.nombre || '—',
+            cliente_telefono: c.cliente_id?.telefono || '—'
         }));
         stats.activeCases = cases.filter(c => c.estado !== 'Cerrado' && c.estado !== 'Sentencia').length;
 
-        // 2. Fetch Plazos/Audiencias
-        let plazosUrl = `${API_URL}/items/plazos`;
+        // 2. Fetch Plazos/Audiencias (con datos de expediente y cliente)
+        let plazosUrl = `${API_URL}/items/plazos?fields=*,expediente_id.n_causa,expediente_id.cliente_id.nombre`;
         if (userRole === 'CLIENT') {
-            plazosUrl += `?filter[expediente_id][cliente_id][_eq]=${activeClientId}`;
+            plazosUrl += `&filter[expediente_id][cliente_id][_eq]=${activeClientId}`;
         }
         const plazosRes = await fetch(plazosUrl);
         const plazosData = await plazosRes.json();
@@ -127,7 +135,9 @@ async function fetchData() {
                 time: localDate.getHours().toString().padStart(2, '0') + ':' + localDate.getMinutes().toString().padStart(2, '0'),
                 day: localDate.getDay() === 0 ? 7 : localDate.getDay(),
                 duration: 2,
-                rawDate: localDate
+                rawDate: localDate,
+                causa: p.expediente_id?.n_causa || '',
+                cliente: p.expediente_id?.cliente_id?.nombre || ''
             };
         });
 
@@ -309,6 +319,7 @@ function renderCasos() {
         <thead>
           <tr>
             <th>ROL/RIT</th>
+            <th>CLIENTE</th>
             <th>TRIBUNAL</th>
             <th>PRIORIDAD</th>
             <th>ESTADO</th>
@@ -320,11 +331,15 @@ function renderCasos() {
           ${cases.map(c => `
             <tr class="case-row-hover">
               <td><strong>${c.n_causa}</strong></td>
+              <td>${c.cliente_nombre}</td>
               <td>${c.tribunal}</td>
               <td><span class="priority-tag prio-${c.priority.toLowerCase()}">${c.priority}</span></td>
               <td><span class="status-badge" style="background: rgba(0, 210, 255, 0.1); color: var(--accent)">${c.estado}</span></td>
                 <td>${c.created_at}</td>
-                <td><button class="btn-icon" onclick="window.viewTimeline('${c.id}')">👁️</button></td>
+                <td style="display:flex;gap:0.5rem">
+                  <button class="btn-icon" onclick="window.viewTimeline('${c.id}')">👁️</button>
+                  <button class="btn-icon" onclick="window.editEstado('${c.id}', '${c.estado}')" title="Cambiar estado">✏️</button>
+                </td>
               </tr>
           `).join('')}
         </tbody>
@@ -334,65 +349,81 @@ function renderCasos() {
 }
 
 function renderCitas() {
-    const startOfWeek = getStartOfWeek(new Date());
-    const times = ['07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'];
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const monthName = calendarMonth.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+    const monthLabel = monthName.charAt(0).toUpperCase() + monthName.slice(1);
 
-    const weekDays = [];
-    for (let i = 0; i < 7; i++) {
-        const d = new Date(startOfWeek);
-        d.setDate(startOfWeek.getDate() + i);
-        let label = d.toLocaleDateString('es-ES', { weekday: 'long' });
-        if (label.toLowerCase() === 'miércoles') label = 'Miérc.';
+    const today = new Date();
+    const isToday = (d: number) => d === today.getDate() && month === today.getMonth() && year === today.getFullYear();
 
-        weekDays.push({
-            label: label.charAt(0).toUpperCase() + label.slice(1),
-            dateLabel: d.getDate() + '/' + (d.getMonth() + 1),
-            fullDate: d
-        });
+    // Build calendar grid
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    let startDow = firstDay.getDay();
+    if (startDow === 0) startDow = 7; // Lunes=1
+
+    const daysInMonth = lastDay.getDate();
+    const dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+    // Get events per day
+    const eventsPerDay: Record<number, Appointment[]> = {};
+    appointments.forEach(a => {
+        const d = a.rawDate;
+        if (d.getMonth() === month && d.getFullYear() === year) {
+            const day = d.getDate();
+            if (!eventsPerDay[day]) eventsPerDay[day] = [];
+            eventsPerDay[day].push(a);
+        }
+    });
+
+    // Build day cells
+    let cells = '';
+    // Empty cells before first day
+    for (let i = 1; i < startDow; i++) {
+        cells += '<div class="mcal-cell mcal-empty"></div>';
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+        const events = eventsPerDay[d] || [];
+        const hasEvents = events.length > 0;
+        const todayClass = isToday(d) ? ' mcal-today' : '';
+        const eventClass = hasEvents ? ' mcal-has-events' : '';
+        const clickAttr = hasEvents ? `onclick="window.showDayEvents(${year},${month},${d})"` : '';
+
+        cells += `
+          <div class="mcal-cell${todayClass}${eventClass}" ${clickAttr}>
+            <div class="mcal-day-number">${d}</div>
+            ${events.slice(0, 3).map(e => `
+              <div class="mcal-event-dot" title="${e.time} - ${e.title}">
+                <span class="mcal-dot"></span>
+                <span class="mcal-event-text">${e.time} ${e.title}</span>
+              </div>
+            `).join('')}
+            ${events.length > 3 ? `<div class="mcal-more">+${events.length - 3} más</div>` : ''}
+          </div>
+        `;
     }
 
     return `
     <div class="header-row">
       <div class="welcome-section">
         <h1>${userRole === 'ADMIN' ? 'Agenda de Plazos' : 'Mis Próximos Eventos'}</h1>
-        <p>${userRole === 'ADMIN' ? `Vencimientos para la semana del ${startOfWeek.toLocaleDateString()}.` : 'Revisa tus audiencias y plazos legales.'}</p>
+        <p>${userRole === 'ADMIN' ? 'Calendario mensual con hitos y vencimientos.' : 'Revisa tus audiencias y plazos legales.'}</p>
       </div>
       ${userRole === 'ADMIN' ? `<button class="btn btn-glow" onclick="window.prepareNewDeadlineForm()">Nuevo Hito</button>` : ''}
     </div>
 
-    <div class="calendar-grid">
-      <div class="cal-time-col">
-        <div class="cal-header">Hora</div>
-        ${times.map(t => `<div class="cal-time-slot">${t}</div>`).join('')}
+    <div class="section-card">
+      <div class="mcal-nav">
+        <button class="btn btn-outline btn-sm" onclick="window.changeMonth(-1)">◀ Anterior</button>
+        <h2 class="mcal-month-title">${monthLabel}</h2>
+        <button class="btn btn-outline btn-sm" onclick="window.changeMonth(1)">Siguiente ▶</button>
       </div>
-      ${weekDays.map((wd, idx) => {
-        const dayAppointments = appointments.filter(a => {
-            const d = (a as any).rawDate;
-            return d.getDate() === wd.fullDate.getDate() &&
-                d.getMonth() === wd.fullDate.getMonth() &&
-                d.getFullYear() === wd.fullDate.getFullYear();
-        });
 
-        return `
-          <div class="cal-day-col">
-            <div class="cal-header">
-              <span class="day-name">${wd.label}</span>
-              <span class="day-date">${wd.dateLabel}</span>
-            </div>
-            ${times.map(() => `<div class="cal-cell"></div>`).join('')}
-            ${dayAppointments.map(a => {
-            const [hour, min] = a.time.split(':').map(Number);
-            if (hour < 7 || hour > 20) return ''; // Visual range 07-20
-            const top = (hour - 7) * 60 + min + 40;
-            const height = a.duration * 30;
-            return `<div class="cal-event" style="top: ${top}px; height: ${height}px;" title="${a.title}">
-                <div class="event-time">${a.time}</div>
-                <div class="event-title">${a.title}</div>
-              </div>`;
-        }).join('')}
-          </div>
-        `;
-    }).join('')}
+      <div class="mcal-grid">
+        ${dayNames.map(dn => `<div class="mcal-header">${dn}</div>`).join('')}
+        ${cells}
+      </div>
     </div>
   `
 }
@@ -469,6 +500,7 @@ function renderClientes() {
                 <td>${c.email}</td>
                 <td>${c.telefono || '-'}</td>
                 <td>
+                  <button class="btn-icon" title="Editar" onclick="window.editCliente('${c.id}')">✏️</button>
                   <button class="btn-icon" title="Enviar Email" onclick="window.location.href='mailto:${c.email}'">📧</button>
                   ${c.telefono ? `<button class="btn-icon" title="Llamar" onclick="window.location.href='tel:${c.telefono}'">📞</button>` : ''}
                 </td>
@@ -520,7 +552,7 @@ async function viewTimeline(expId: string) {
         ${timeline.length === 0 ? '<p class="muted-text">No hay actuaciones registradas para este expediente.</p>' :
                 timeline.map((t: any) => `
             <div class="timeline-item">
-              <div class="timeline-date">${new Date(t.fecha).toLocaleDateString()}</div>
+              <div class="timeline-date">${new Date(t.created_at).toLocaleString()}</div>
               <div class="timeline-bitacora">${t.bitacora}</div>
             </div>
           `).join('')}
@@ -538,6 +570,77 @@ async function viewTimeline(expId: string) {
 
 // @ts-ignore
 window.viewTimeline = viewTimeline;
+
+async function editEstado(id: string, currentEstado: string) {
+    const caso = cases.find(c => c.id === id);
+    const estados = ['Ingresada', 'En Tramitación', 'Audiencia', 'Sentencia', 'Cerrado'];
+    const options = estados.map(e =>
+        `<option value="${e}" ${e === currentEstado ? 'selected' : ''}>${e}</option>`
+    ).join('');
+
+    const content = `
+      <form id="edit-estado-form">
+        <input type="hidden" id="edit-estado-exp-id" value="${id}" />
+        ${caso ? `
+        <div class="form-group" style="background:rgba(255,255,255,0.04);border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem">
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.25rem">EXPEDIENTE</div>
+          <div style="font-weight:600">${caso.n_causa}</div>
+          <div style="font-size:0.85rem;margin-top:0.4rem">👤 <strong>${caso.cliente_nombre}</strong></div>
+          <div style="font-size:0.82rem;color:var(--text-muted)">📱 ${caso.cliente_telefono}</div>
+        </div>` : ''}
+        <div class="form-group">
+          <label>Nuevo estado</label>
+          <select id="edit-estado-select" class="form-control">
+            ${options}
+          </select>
+        </div>
+        <p class="muted-text" style="font-size:0.8rem;margin-top:0.5rem">
+          ⚠️ Al cambiar a <strong>Sentencia</strong> se enviará automáticamente un WhatsApp al número indicado.
+        </p>
+        <div style="display:flex;gap:1rem;margin-top:2rem">
+          <button type="button" class="btn btn-outline" onclick="window.toggleModal(false)" style="flex:1">Cancelar</button>
+          <button type="submit" class="btn btn-glow" style="flex:1">Guardar</button>
+        </div>
+      </form>
+    `;
+    showModal('Cambiar Estado del Expediente', content);
+}
+// @ts-ignore
+window.editEstado = editEstado;
+
+async function editCliente(id: string) {
+    const cliente = clients.find(c => c.id === id);
+    if (!cliente) { alert('Cliente no encontrado'); return; }
+
+    const content = `
+      <form id="edit-cliente-form">
+        <input type="hidden" id="edit-cl-id" value="${id}" />
+        <div class="form-group">
+          <label>Nombre Completo</label>
+          <input type="text" id="edit-cl-nombre" class="form-control" value="${cliente.nombre || ''}" required />
+        </div>
+        <div class="form-group">
+          <label>RUT / DNI</label>
+          <input type="text" id="edit-cl-rut" class="form-control" value="${cliente.rut || ''}" required />
+        </div>
+        <div class="form-group">
+          <label>Correo Electrónico</label>
+          <input type="email" id="edit-cl-email" class="form-control" value="${cliente.email || ''}" required />
+        </div>
+        <div class="form-group">
+          <label>Teléfono / WhatsApp</label>
+          <input type="text" id="edit-cl-telefono" class="form-control" value="${cliente.telefono || ''}" />
+        </div>
+        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+          <button type="button" class="btn btn-outline" onclick="window.toggleModal(false)" style="flex:1">Cancelar</button>
+          <button type="submit" class="btn btn-glow" style="flex:1">Guardar Cambios</button>
+        </div>
+      </form>
+    `;
+    showModal('Editar Cliente', content);
+}
+// @ts-ignore
+window.editCliente = editCliente;
 
 function showModal(title: string, content: string) {
     modalTitle = title;
@@ -580,6 +683,50 @@ function attachModalEvents() {
             alert("Error de red");
             submitBtn.disabled = false;
             submitBtn.innerText = 'Crear Expediente';
+        }
+    });
+
+    document.querySelector('#edit-estado-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const form = e.target as HTMLFormElement;
+        const submitBtn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+        submitBtn.disabled = true;
+        submitBtn.innerText = 'Guardando...';
+
+        const expId = (document.querySelector('#edit-estado-exp-id') as HTMLInputElement).value;
+        const nuevoEstado = (document.querySelector('#edit-estado-select') as HTMLSelectElement).value;
+
+        try {
+            const res = await fetch(`${API_URL}/items/expedientes/${expId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ estado: nuevoEstado })
+            });
+            if (res.ok) {
+                // Registrar cambio de estado en la línea de tiempo
+                const caso = cases.find(c => c.id === expId);
+                const estadoAnterior = caso?.estado || '—';
+                await fetch(`${API_URL}/items/actuaciones`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        expediente_id: expId,
+                        fecha: new Date().toISOString().split('T')[0],
+                        bitacora: `📋 Cambio de estado: ${estadoAnterior} → ${nuevoEstado}`
+                    })
+                });
+                toggleModal(false);
+                fetchData();
+            } else {
+                const errData = await res.json();
+                alert(`Error: ${errData.errors?.[0]?.message || 'No se pudo actualizar'}`);
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'Guardar';
+            }
+        } catch (err) {
+            alert("Error de red");
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Guardar';
         }
     });
 
@@ -651,6 +798,43 @@ function attachModalEvents() {
             alert("Error de red");
             submitBtn.disabled = false;
             submitBtn.innerText = 'Registrar Cliente';
+        }
+    });
+
+    document.querySelector('#edit-cliente-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target as HTMLFormElement;
+        const submitBtn = btn.querySelector('button[type="submit"]') as HTMLButtonElement;
+        submitBtn.disabled = true;
+        submitBtn.innerText = 'Guardando...';
+
+        const clienteId = (document.querySelector('#edit-cl-id') as HTMLInputElement).value;
+        const body = {
+            nombre: (document.querySelector('#edit-cl-nombre') as HTMLInputElement).value,
+            rut: (document.querySelector('#edit-cl-rut') as HTMLInputElement).value,
+            email: (document.querySelector('#edit-cl-email') as HTMLInputElement).value,
+            telefono: (document.querySelector('#edit-cl-telefono') as HTMLInputElement).value
+        };
+
+        try {
+            const res = await fetch(`${API_URL}/items/clientes/${clienteId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (res.ok) {
+                toggleModal(false);
+                fetchData();
+            } else {
+                const errData = await res.json();
+                alert(`Error: ${errData.errors?.[0]?.message}`);
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'Guardar Cambios';
+            }
+        } catch (err) {
+            alert("Error de red");
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Guardar Cambios';
         }
     });
 
@@ -947,6 +1131,81 @@ function showClientLogin() {
 
 // @ts-ignore
 window.showClientLogin = showClientLogin;
+
+function changeMonth(delta: number) {
+    calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + delta, 1);
+    render();
+}
+// @ts-ignore
+window.changeMonth = changeMonth;
+
+function showDayEvents(year: number, month: number, day: number) {
+    const dayDate = new Date(year, month, day);
+    const dayLabel = dayDate.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const dayTitle = dayLabel.charAt(0).toUpperCase() + dayLabel.slice(1);
+
+    const events = appointments.filter(a => {
+        const d = a.rawDate;
+        return d.getDate() === day && d.getMonth() === month && d.getFullYear() === year;
+    }).sort((a, b) => a.time.localeCompare(b.time));
+
+    const content = `
+      <div class="day-events-list">
+        ${events.map(e => `
+          <div class="day-event-card" onclick="window.showEventDetail('${e.id}')">
+            <div class="day-event-time">🕐 ${e.time}</div>
+            <div class="day-event-title">${e.title}</div>
+            ${e.causa ? `<div class="day-event-meta">📁 ${e.causa}${e.cliente ? ` · ${e.cliente}` : ''}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+    showModal(dayTitle, content);
+}
+// @ts-ignore
+window.showDayEvents = showDayEvents;
+
+function showEventDetail(eventId: string) {
+    const event = appointments.find(a => a.id === eventId);
+    if (!event) return;
+
+    const dateStr = event.rawDate.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    const content = `
+      <div style="display:flex;flex-direction:column;gap:1.2rem">
+        <div class="form-group" style="background:rgba(0,210,255,0.06);border:1px solid rgba(0,210,255,0.15);border-radius:8px;padding:1.2rem">
+          <div style="font-size:0.75rem;color:var(--text-muted);letter-spacing:1px;margin-bottom:0.5rem">HITO / EVENTO</div>
+          <div style="font-size:1.1rem;font-weight:700;color:#fff">${event.title}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+          <div>
+            <div style="font-size:0.7rem;color:var(--text-muted);letter-spacing:1px;margin-bottom:0.3rem">FECHA</div>
+            <div style="font-weight:600">📅 ${dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}</div>
+          </div>
+          <div>
+            <div style="font-size:0.7rem;color:var(--text-muted);letter-spacing:1px;margin-bottom:0.3rem">HORA</div>
+            <div style="font-weight:600">🕐 ${event.time} hrs</div>
+          </div>
+        </div>
+        ${event.causa ? `
+        <div>
+          <div style="font-size:0.7rem;color:var(--text-muted);letter-spacing:1px;margin-bottom:0.3rem">CAUSA</div>
+          <div style="font-weight:600">📁 ${event.causa}</div>
+        </div>` : ''}
+        ${event.cliente ? `
+        <div>
+          <div style="font-size:0.7rem;color:var(--text-muted);letter-spacing:1px;margin-bottom:0.3rem">CLIENTE</div>
+          <div style="font-weight:600">👤 ${event.cliente}</div>
+        </div>` : ''}
+        <div style="margin-top:0.5rem">
+          <button class="btn btn-outline" onclick="window.showDayEvents(${event.rawDate.getFullYear()},${event.rawDate.getMonth()},${event.rawDate.getDate()})" style="width:100%">← Volver al día</button>
+        </div>
+      </div>
+    `;
+    showModal('Detalle del Hito', content);
+}
+// @ts-ignore
+window.showEventDetail = showEventDetail;
 
 function getStartOfWeek(d: Date) {
     const date = new Date(d);
