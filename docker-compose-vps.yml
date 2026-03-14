@@ -1,8 +1,8 @@
 # ============================================================
-# ToxiroAbogados — Docker Compose para Dokploy (produccion)
+# ToxiroAbogados — Docker Compose para Coolify (produccion)
 # 3 servicios: db-legal, api-legal, web
-# n8n NO se incluye (corre en proyecto separado "Automatizaciones")
-# Traefik/SSL gestionado automaticamente por Dokploy
+# n8n NO se incluye (corre en proyecto separado en Coolify)
+# Traefik/SSL gestionado automaticamente por Coolify
 # ============================================================
 
 services:
@@ -24,6 +24,8 @@ services:
     image: directus/directus:latest
     container_name: toxiro-api
     restart: always
+    expose:
+      - "8055"
     volumes:
       - toxiro_uploads:/directus/uploads
       - toxiro_extensions:/directus/extensions
@@ -56,6 +58,7 @@ services:
       - db-legal
     networks:
       - toxiro-net
+      - coolify
 
   web:
     build:
@@ -65,12 +68,17 @@ services:
         VITE_API_URL: "https://api.toxirodigital.cloud"
     container_name: toxiro-web
     restart: always
+    expose:
+      - "80"
     networks:
       - toxiro-net
+      - coolify
 
 networks:
   toxiro-net:
     driver: bridge
+  coolify:
+    external: true
 
 volumes:
   toxiro_db_data:

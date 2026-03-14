@@ -1,26 +1,26 @@
-# Deploy ToxiroAbogados — Dokploy
+# Deploy ToxiroAbogados — Coolify
 
 ## Arquitectura
 
 ```
-Dokploy / Traefik (SSL automatico)
+Coolify / Traefik (SSL automatico)
          |
-   ------+------------------+-------------------
-   |                        |                   |
+   ------+---------------------------+
+         |                           |
 abogados.toxirodigital.cloud   api.toxirodigital.cloud   n8n.toxirodigital.cloud
-   (frontend nginx)             (Directus 11)             (ya existe, proy aparte)
+   (frontend nginx)             (Directus 11)             (proyecto aparte en Coolify)
                                      |
                                db-legal (PostgreSQL, interno)
 ```
 
 **Servicios en este Compose:** `db-legal`, `api-legal`, `web`
-**n8n** corre en proyecto separado "Automatizaciones"
+**n8n** corre en proyecto separado en Coolify
 
 ---
 
 ## Prerequisitos
 
-- Dokploy funcionando en el VPS
+- Coolify funcionando en el VPS (http://72.60.248.159:8000)
 - Repo GitHub: `https://github.com/Seropeto/LegalFactoryStack`
 - Subdominios DNS configurados:
   - `abogados.toxirodigital.cloud` -> IP del VPS
@@ -29,22 +29,28 @@ abogados.toxirodigital.cloud   api.toxirodigital.cloud   n8n.toxirodigital.cloud
 
 ---
 
-## Paso 1: Crear proyecto en Dokploy
+## Paso 1: Crear proyecto en Coolify
 
-1. En Dokploy UI -> "Projects" -> Crear nuevo proyecto **ToxiroAbogados**
-   - (O limpiar el proyecto existente eliminando servicios viejos)
-2. Agregar servicio tipo **Compose**
-3. Configurar origen:
-   - Provider: **GitHub**
-   - Repository: `Seropeto/LegalFactoryStack`
-   - Branch: `main` (o la rama de produccion)
-   - Compose Path: `docker-compose-vps.yml`
+1. Ir a **Coolify UI** -> **Projects** -> **+ New Project**
+2. Nombre: `ToxiroAbogados`
 
 ---
 
-## Paso 2: Variables de entorno en Dokploy
+## Paso 2: Agregar recurso Docker Compose
 
-En la seccion "Environment" del servicio Compose, agregar:
+1. Dentro del proyecto -> **+ New Resource**
+2. Seleccionar **Docker Compose**
+3. Seleccionar source: **GitHub** (conectar si no esta conectado)
+   - Repository: `Seropeto/LegalFactoryStack`
+   - Branch: `master`
+   - Compose Location: `docker-compose-vps.yml`
+4. Click **Continue**
+
+---
+
+## Paso 3: Variables de entorno en Coolify
+
+En la seccion **Environment Variables** del recurso, agregar:
 
 ```
 DB_PASS_LEGAL=<contraseña-segura-postgres>
@@ -58,34 +64,40 @@ DIRECTUS_ADMIN_PASSWORD=<contraseña-admin-segura>
 
 ---
 
-## Paso 3: Deploy
+## Paso 4: Configurar dominios en Coolify
 
-1. Click "Deploy" en Dokploy
-2. Dokploy clonara el repo, construira el `Dockerfile.frontend` y levantara los 3 servicios
+Coolify permite asignar dominios por servicio dentro del Compose.
+
+### Servicio `api-legal`
+- En la config del recurso, buscar servicio `api-legal`
+- Dominio: `https://api.toxirodigital.cloud`
+- Puerto interno: `8055`
+- Habilitar HTTPS (Let's Encrypt automatico)
+
+### Servicio `web`
+- En la config del recurso, buscar servicio `web`
+- Dominio: `https://abogados.toxirodigital.cloud`
+- Puerto interno: `80`
+- Habilitar HTTPS
+
+> **Nota**: El servicio `db-legal` NO necesita dominio — es solo interno.
+
+---
+
+## Paso 5: Deploy
+
+1. Click **Deploy** en Coolify
+2. Coolify clonara el repo, construira el `Dockerfile.frontend` y levantara los 3 servicios
 3. Esperar hasta que los 3 contenedores esten en estado `Running`
+4. Verificar logs por si hay errores de conexion DB (Directus tarda ~30s en arrancar)
 
 ---
 
-## Paso 4: Asignar dominios en Dokploy
-
-Para el servicio **api-legal**:
-1. Ir a la seccion "Domains" del servicio
-2. Agregar dominio: `api.toxirodigital.cloud`
-3. Habilitar HTTPS (Let's Encrypt automatico)
-
-Para el servicio **web**:
-1. Ir a la seccion "Domains" del servicio
-2. Agregar dominio: `abogados.toxirodigital.cloud`
-3. Habilitar HTTPS
-
----
-
-## Paso 5: Configurar Directus
+## Paso 6: Configurar Directus
 
 Desde tu maquina local (con Node.js instalado):
 
 ```bash
-# El setup-directus.mjs ya apunta a api.toxirodigital.cloud
 node setup-directus.mjs
 ```
 
@@ -93,41 +105,30 @@ Esto crea las colecciones y permisos publicos necesarios.
 
 ### Crear Directus Flows (desde Directus Admin UI)
 
-Acceder a `https://api.toxirodigital.cloud/admin` -> Settings -> Flows:
+Acceder a `https://api.toxirodigital.cloud/admin` -> Settings -> Flows.
 
-**Flow 1 — Onboarding Email (nuevo cliente)**
-- Trigger: `items.create` en coleccion `clientes` (tipo: action/async)
-- Operacion 1 (`get_cliente`): GET `http://toxiro-api:8055/items/clientes/{{$trigger.key}}?fields=id,nombre,rut,email,telefono`
-  - Headers: `Authorization: Bearer n8n_directus_static_token_legal`
-- Operacion 2 (`send_to_n8n`): POST `https://n8n.toxirodigital.cloud/webhook/onboarding-cliente`
-  - Body JSON con `{{get_cliente.data.data.id}}`, `{{get_cliente.data.data.nombre}}`, etc.
+Importar los flows exportados:
+- `infra/directus-flow-sentencia.json` — Notificacion WhatsApp al dictar Sentencia
 
-**Flow 2 — Notificacion Sentencia (WhatsApp)**
-- Trigger: `items.update` en `expedientes` (action/async)
-- Condition: `{"$trigger":{"payload":{"estado":{"_eq":"Sentencia"}}}}`
-- GET expediente con cliente -> POST Twilio API -> Mark notificado
+Para los flows de Onboarding y Cierre hay que recrearlos manualmente (ver DEPLOY.md anterior) o importar desde Settings -> Data Model -> Import/Export.
 
-**Flow 3 — Notificacion Cierre (Email)**
-- Trigger: `items.update` en `expedientes` (action/async)
-- Condition: `{"$trigger":{"payload":{"estado":{"_eq":"Cerrado"}}}}`
-- GET expediente -> POST `https://n8n.toxirodigital.cloud/webhook/cierre-expediente` -> Mark notificado
-
-> IMPORTANTE: Las llamadas internas entre servicios del mismo Compose usan
-> `http://toxiro-api:8055` (nombre del container). Las llamadas a n8n usan
-> la URL publica `https://n8n.toxirodigital.cloud` porque esta en otro proyecto.
+**Referencias de URLs internas** (los flows usan nombre de container):
+- Directus interno: `http://toxiro-api:8055`
+- n8n: `https://n8n.toxirodigital.cloud` (publico, esta en otro proyecto Coolify)
 
 ---
 
-## Paso 6: Configurar n8n
+## Paso 7: Configurar n8n
 
 Acceder a `https://n8n.toxirodigital.cloud`:
 
 ### Importar workflows
-Importar estos archivos JSON desde el menu de n8n:
 - `infra/n8n-onboarding.json` — Email de bienvenida
 - `infra/n8n-cierre-expediente.json` — Email de cierre
+- `infra/n8n-plazos-twilio.json` — Recordatorio plazos WhatsApp
 
-### Crear credenciales
+### Credenciales necesarias
+
 1. **Directus Bearer Token** (tipo: Header Auth)
    - Name: `Authorization`
    - Value: `Bearer n8n_directus_static_token_legal`
@@ -145,7 +146,7 @@ Activar todos los workflows importados desde la UI de n8n.
 
 ---
 
-## Paso 7: Crear token estatico en Directus
+## Paso 8: Crear token estatico en Directus
 
 En Directus Admin -> Settings -> Users -> Admin:
 1. Ir a la seccion "Token" del usuario admin
@@ -157,7 +158,7 @@ En Directus Admin -> Settings -> Users -> Admin:
 ## Verificacion
 
 ```bash
-# Directus API
+# Directus API health
 curl -I https://api.toxirodigital.cloud/server/health
 
 # Frontend
@@ -176,12 +177,14 @@ curl -I https://abogados.toxirodigital.cloud
 | Directus Admin | `https://api.toxirodigital.cloud/admin`    |
 | Directus API   | `https://api.toxirodigital.cloud`          |
 | n8n            | `https://n8n.toxirodigital.cloud`          |
+| Coolify        | `http://72.60.248.159:8000`                |
 
 ---
 
 ## Notas de seguridad
 
-- Las variables de entorno se configuran en Dokploy UI (nunca en archivos del repo)
-- El compose NO expone puertos al host — todo va por Traefik
-- La red `toxiro-net` es aislada, no afecta otros proyectos en Dokploy
+- Las variables de entorno se configuran en Coolify UI (nunca en archivos del repo)
+- El compose NO expone puertos al host — todo va por Traefik de Coolify
+- `db-legal` solo esta en la red interna `toxiro-net` (no accesible desde afuera)
+- `api-legal` y `web` estan en `toxiro-net` (comunicacion interna) y `coolify` (proxy)
 - Los volumenes usan prefijo `toxiro_` para evitar colisiones
